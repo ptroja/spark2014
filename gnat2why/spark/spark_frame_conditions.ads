@@ -66,7 +66,7 @@ package SPARK_Frame_Conditions is
    procedure Display_Maps;
    --  Send maps to output for debug
 
-   function Computed_Calls (E_Name : Entity_Name) return Name_Sets.Set;
+   function Computed_Calls (E : Entity_Name) return Name_Sets.Set;
    --  Get subprograms directly called by subprogram E_Name
 
    function Computed_Reads
@@ -94,10 +94,9 @@ package SPARK_Frame_Conditions is
    --  Extract xref information from an ALI file
 
    procedure Collect_Direct_Computed_Globals
-     (E                  : Entity_Id;
-      Inputs             : out Name_Sets.Set;
-      Outputs            : out Name_Sets.Set;
-      Called_Subprograms : out Name_Sets.Set)
+     (E       :     Entity_Id;
+      Inputs  : out Name_Sets.Set;
+      Outputs : out Name_Sets.Set)
    with Pre  => Ekind (E) in Entry_Kind
                            | E_Function
                            | E_Procedure
