@@ -73,10 +73,6 @@ package body Flow_Generated_Globals.ALI_Serialization is
                                    Instances => 1,
                                    Node      => Empty)),
 
-      EK_Tasking_Info       => (Kind       => EK_Tasking_Info,
-                                The_Entity => Invalid_Entity_Name,
-                                others     => <>),
-
       EK_Max_Queue_Length   => (Kind                 => EK_Max_Queue_Length,
                                 The_Entry            => Invalid_Entity_Name,
                                 The_Max_Queue_Length => Nat'First),
@@ -103,8 +99,6 @@ package body Flow_Generated_Globals.ALI_Serialization is
       Insert           => Name_Sets.Insert);
 
    procedure Serialize (A : in out Archive; V : in out Task_Object);
-
-   procedure Serialize (A : in out Archive; V : in out Name_Tasking_Info);
 
    procedure Serialize (A : in out Archive; V : in out Partial_Contract);
 
@@ -136,13 +130,6 @@ package body Flow_Generated_Globals.ALI_Serialization is
       end if;
    end Serialize;
 
-   procedure Serialize (A : in out Archive; V : in out Name_Tasking_Info) is
-   begin
-      for Kind in Tasking_Info_Kind loop
-         Serialize (A, V (Kind), Kind'Img);
-      end loop;
-   end Serialize;
-
    procedure Serialize (A : in out Archive; V : in out Partial_Contract) is
       procedure Serialize is new Serialisation.Serialize_Discrete
         (T => Entity_Kind);
@@ -153,11 +140,24 @@ package body Flow_Generated_Globals.ALI_Serialization is
 
       procedure Serialize (A : in out Archive; G : in out Globals);
 
+      procedure Serialize (A : in out Archive; V : in out Name_Tasking_Info);
+
+      ---------------
+      -- Serialize --
+      ---------------
+
       procedure Serialize (A : in out Archive; G : in out Globals) is
       begin
          Serialize (A, G.Proof_Ins, "proof_in");
          Serialize (A, G.Inputs,    "input");
          Serialize (A, G.Outputs,   "output");
+      end Serialize;
+
+      procedure Serialize (A : in out Archive; V : in out Name_Tasking_Info) is
+      begin
+         for Kind in Tasking_Info_Kind loop
+            Serialize (A, V (Kind), Kind'Img);
+         end loop;
       end Serialize;
 
    --  Start of processing for Serialize
@@ -181,11 +181,15 @@ package body Flow_Generated_Globals.ALI_Serialization is
       if V.Kind in Entry_Kind
                  | E_Function
                  | E_Procedure
+                 | E_Task_Type
       then
-         Serialize (A, V.Has_Terminate);
-         Serialize (A, V.Recursive);
-         Serialize (A, V.Nonreturning);
-         Serialize (A, V.Nonblocking);
+         if V.Kind /= E_Task_Type then
+            Serialize (A, V.Has_Terminate);
+            Serialize (A, V.Recursive);
+            Serialize (A, V.Nonreturning);
+            Serialize (A, V.Nonblocking);
+         end if;
+         Serialize (A, V.Tasking);
       end if;
    end Serialize;
 
@@ -258,10 +262,6 @@ package body Flow_Generated_Globals.ALI_Serialization is
          when EK_Task_Instance =>
             Serialize (A, V.The_Type);
             Serialize (A, V.The_Object);
-
-         when EK_Tasking_Info =>
-            Serialize (A, V.The_Entity);
-            Serialize (A, V.The_Tasking_Info);
 
          when EK_Max_Queue_Length =>
             Serialize (A, V.The_Entry);
