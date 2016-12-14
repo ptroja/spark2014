@@ -183,6 +183,7 @@ package body Flow_Generated_Globals.ALI_Serialization is
                  | E_Procedure
                  | E_Task_Type
       then
+         --  ??? use Is_Proper_Callee here
          if V.Kind /= E_Task_Type then
             Serialize (A, V.Has_Terminate);
             Serialize (A, V.Recursive);

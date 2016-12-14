@@ -150,6 +150,7 @@ package body Flow_Generated_Globals.Partial is
           (for all G of Global_Nodes.Proof_Ins =>
               not Global_Nodes.Inputs.Contains (G) and then
               not Global_Nodes.Outputs.Contains (G));
+   --  ??? should it be an array then we could remove some repeated code
 
    type Contract is record
       Proper  : Global_Nodes;
@@ -333,10 +334,10 @@ package body Flow_Generated_Globals.Partial is
          Source, Target : Global_Kind;
       end record
         with Predicate => Edge_Kind.Source in Proof_Ins | Inputs | Outputs;
-      --  Kind of edges in the global graphs: they are always from
-      --  subprogram (represented as Proof_Ins, Inputs and Outputs) to
-      --  either other subprogram (when it represents a call) or to
-      --  variable (when it represents a direct access to global).
+      --  Kind of edges in the global graphs: they are always from subprogram
+      --  (represented as Proof_Ins, Inputs and Outputs) to either other
+      --  subprogram (when it represents a call) or to variable (when it
+      --  represents a direct access to global).
 
       type Edge_Kinds is array (Positive range <>) of Edge_Kind;
       --  Technical type for representing a bucket of edge kinds
@@ -352,10 +353,9 @@ package body Flow_Generated_Globals.Partial is
 
       procedure Add_Down_Projected_Globals (G : Global_Nodes) is
 
-         Analyzed_View : constant Flow_Scope :=
-           Get_Flow_Scope (Get_Body (E));
+         Analyzed_View : constant Flow_Scope := Get_Flow_Scope (Get_Body (E));
 
-         --  Start of processing for Add_Down_Projected_Globals
+      --  Start of processing for Add_Down_Projected_Globals
 
       begin
          Connect (Down_Project (G.Proof_Ins, Analyzed_View),
@@ -407,7 +407,7 @@ package body Flow_Generated_Globals.Partial is
               "'" & Global_Kind'Image (G.Kind);
          end Image;
 
-         --  Start of processing for Connect
+      --  Start of processing for Connect
 
       begin
          for Target_Entity of Targets loop
@@ -463,25 +463,25 @@ package body Flow_Generated_Globals.Partial is
          Add_Globals (Contr.Proper);
       end if;
 
-      --  For proof calls connect the caller's Proof_Ins vertex to the
-      --  callee's Proof_Ins and Inputs (because Inputs of the callee
-      --  are now accessed as Proof_Ins). Do nothing for outputs, because
-      --  they cannot be access from a proof context.
+      --  For proof calls connect the caller's Proof_Ins vertex to the callee's
+      --  Proof_Ins and Inputs (because Inputs of the callee are now accessed
+      --  as Proof_Ins). Do nothing for outputs, because they cannot be access
+      --  from a proof context.
       Connect (Contr.Proof_Calls,
                (1 => (Source => Proof_Ins, Target => Proof_Ins),
                 2 => (Source => Proof_Ins, Target => Inputs)));
 
-      --  For definite calls connect the caller's Proof_Ins, Inputs and
-      --  Outputs vertices respectively to the callee's Proof_Ins, Inputs
-      --  and Outputs vertices.
+      --  For definite calls connect the caller's Proof_Ins, Inputs and Outputs
+      --  vertices respectively to the callee's Proof_Ins, Inputs and Outputs
+      --  vertices.
       Connect (Contr.Definite_Calls,
                (1 => (Source => Proof_Ins, Target => Proof_Ins),
                 2 => (Source => Inputs,    Target => Inputs),
                 3 => (Source => Outputs,   Target => Outputs)));
 
-      --  For conditional calls do as above, but also connect the
-      --  caller's Inputs vertices to the callee's Outputs vertices.
-      --  This models code like:
+      --  For conditional calls do as above, but also connect the caller's
+      --  Inputs vertices to the callee's Outputs vertices. This models code
+      --  like:
       --
       --     if Condition then
       --        Output := ...;
@@ -685,11 +685,12 @@ package body Flow_Generated_Globals.Partial is
       Contr : Contract;
 
    begin
+      --  ??? I do not understand what Is_Generative means
       if FA.Is_Generative then
          declare
-            Local_Subprograms : Node_Sets.Set;
-            --  ??? should be unused
-            pragma Assert (True);
+            Unused : Node_Sets.Set;
+            --  ??? should be remove
+
          begin
             Compute_Globals
               (FA,
@@ -700,7 +701,7 @@ package body Flow_Generated_Globals.Partial is
                Definite_Calls        => Contr.Definite_Calls,
                Conditional_Calls     => Contr.Conditional_Calls,
                Local_Variables       => Contr.Local_Variables,
-               Local_Subprograms     => Local_Subprograms,
+               Local_Subprograms     => Unused,
                Local_Definite_Writes => Contr.Initializes);
          end;
 
@@ -924,7 +925,7 @@ package body Flow_Generated_Globals.Partial is
          Calls.Union (Get_Functions (Expr, Include_Predicates => True));
       end Collect_Calls;
 
-      --  Start of processing for Calls_In_Visible_Contracts
+   --  Start of processing for Calls_In_Visible_Contracts
 
    begin
       for Expr of Get_Precondition_Expressions (E) loop
@@ -1087,7 +1088,7 @@ package body Flow_Generated_Globals.Partial is
 
                for Kind in Contr.Tasking'Range loop
                   if not Contr.Tasking (Kind).Is_Empty then
-                     Dump (Kind'Img, Contr.Tasking (Kind));
+                     Dump (Indent & Kind'Img, Contr.Tasking (Kind));
                   end if;
                end loop;
             end;
@@ -1249,7 +1250,7 @@ package body Flow_Generated_Globals.Partial is
             end loop;
          end Collect;
 
-         --  Start of processing for Collect
+      --  Start of processing for Collect
 
       begin
          Collect (Proof_Ins, G.Proof_Ins);
@@ -1277,10 +1278,10 @@ package body Flow_Generated_Globals.Partial is
             return Boolean
       is
         ((for all C of Iter (Refinement_Constituents (State)) =>
-               Outputs.Contains (C))
+             Outputs.Contains (C))
          and then
-           (for all C of Iter (Part_Of_Constituents (State)) =>
-                 Outputs.Contains (C)));
+         (for all C of Iter (Part_Of_Constituents (State)) =>
+             Outputs.Contains (C)));
 
       ----------------
       -- Up_Project --
