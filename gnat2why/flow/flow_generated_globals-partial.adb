@@ -39,6 +39,7 @@ with Namet;                            use Namet;
 with Sem_Aux;                          use Sem_Aux;
 with Sem_Util;                         use Sem_Util;
 with Sinfo;                            use Sinfo;
+with Snames;                           use Snames;
 with SPARK_Definition;                 use SPARK_Definition;
 with SPARK_Util;                       use SPARK_Util;
 with SPARK_Frame_Conditions;           use SPARK_Frame_Conditions;
@@ -353,9 +354,20 @@ package body Flow_Generated_Globals.Partial is
 
       procedure Add_Down_Projected_Globals (G : Global_Nodes) is
 
-         Analyzed_View : constant Flow_Scope := Get_Flow_Scope (Get_Body (E));
+         Analyzed_View : constant Flow_Scope :=
+           (case Ekind (E) is
+               when Entry_Kind
+                  | E_Function
+                  | E_Procedure
+                  | E_Task_Type
+               =>
+                  Get_Flow_Scope (Get_Body (E)),
 
-      --  Start of processing for Add_Down_Projected_Globals
+               when E_Package
+               =>
+                 (E, Body_Part),
+
+               when others => raise Program_Error);
 
       begin
          Connect (Down_Project (G.Proof_Ins, Analyzed_View),
@@ -449,14 +461,31 @@ package body Flow_Generated_Globals.Partial is
       if E = Analyzed
         or else Parent_Scope (E) = Analyzed
       then
-         Debug ("Adding to graph (refined):", E);
-         if Contr.Proper.Proof_Ins.Is_Empty
-           and then Contr.Proper.Inputs.Is_Empty
-           and then Contr.Proper.Outputs.Is_Empty
+         if (case Ekind (E) is
+                when E_Package
+                =>
+                   Present (Get_Pragma (E, Pragma_Initializes)),
+
+                when Entry_Kind
+                   | E_Function
+                   | E_Procedure
+                   | E_Task_Type
+                =>
+                   Entity_In_SPARK (E)
+                   and then not Entity_Body_In_SPARK (E)
+                   and then Has_User_Supplied_Globals (E),
+
+                when E_Protected_Type
+                =>
+                   Meaningless,
+
+                when others => raise Program_Error)
          then
-            Add_Globals (Contr.Refined);
-         else
+            Debug ("Adding to graph (down-projected):", E);
             Add_Down_Projected_Globals (Contr.Proper);
+         else
+            Debug ("Adding to graph (refined):", E);
+            Add_Globals (Contr.Refined);
          end if;
       else
          Debug ("Adding to graph (proper):", E);
