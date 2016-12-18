@@ -386,25 +386,8 @@ package body Flow_Refinement is
    begin
       --  To see the refinement there must be some body and it must be visible
       --  (which is never the case if we look from the Standard scope).
-      if Present (Body_E) then
-         declare
-            Body_Scope : constant Flow_Scope := Get_Flow_Scope (Body_E);
-         begin
-            --  ??? pretend that expression function bodies are in the package
-            --      body; see Flow_Analyze_Entity
-            if Ekind (E) = E_Function
-              and then Present (Body_Scope)
-              and then Ekind (Body_Scope.Ent) = E_Package
-              and then Body_Scope.Part /= Body_Part
-            then
-               return Is_Visible (Body_Scope'Update (Part => Body_Part), S);
-            else
-               return Is_Visible (Body_Scope, S);
-            end if;
-         end;
-      else
-         return False;
-      end if;
+      return Present (Body_E)
+        and then Is_Visible (Get_Flow_Scope (Body_E), S);
    end Subprogram_Refinement_Is_Visible;
 
    ---------------------------------

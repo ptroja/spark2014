@@ -1004,17 +1004,6 @@ package body Flow is
               E_Function  |
               E_Procedure =>
             FA.B_Scope := Get_Flow_Scope (Get_Body (E));
-
-            --  ??? pretend that expression functions have bodies defined in
-            --      the package body; see Is_Subprogram_Refinement_Visible.
-            if Ekind (E) = E_Function
-              and then Present (FA.B_Scope)
-              and then Ekind (FA.B_Scope.Ent) = E_Package
-              and then FA.B_Scope.Part /= Body_Part
-            then
-               FA.B_Scope := FA.B_Scope'Update (Part => Body_Part);
-            end if;
-
             FA.S_Scope := Get_Flow_Scope (E);
 
             Append (FA.Base_Filename, "subprogram_");
