@@ -1739,9 +1739,17 @@ package body Flow_Generated_Globals.Partial is
          declare
             Node : constant Entity_Id := Find_Entity (Name);
 
-            pragma Assert (if No (Node) then Is_Heap_Variable (Name));
+            --  pragma Assert (if No (Node) then Is_Heap_Variable (Name));
+            --  ??? temporarily replace prama with an error message below
 
          begin
+            if No (Node)
+              and then not Is_Heap_Variable (Name)
+            then
+               Ada.Text_IO.Put_Line ("no Entity_Id for " &
+                                     Common_Containers.To_String (Name));
+               raise Program_Error;
+            end if;
             Nodes.Insert (Node);
          end;
       end loop;
