@@ -498,7 +498,8 @@ package body Flow_Generated_Globals.Partial is
       --  from a proof context.
       Connect (Contr.Proof_Calls,
                (1 => (Source => Proof_Ins, Target => Proof_Ins),
-                2 => (Source => Proof_Ins, Target => Inputs)));
+                2 => (Source => Proof_Ins, Target => Inputs),
+                3 => (Source => Outputs,   Target => Outputs)));
 
       --  For definite calls connect the caller's Proof_Ins, Inputs and Outputs
       --  vertices respectively to the callee's Proof_Ins, Inputs and Outputs
@@ -1219,7 +1220,11 @@ package body Flow_Generated_Globals.Partial is
 
       use Global_Graphs;
 
-      procedure Collect (G : out Global_Nodes);
+      function Collect
+        (E            : Entity_Id;
+         Global_Graph : Global_Graphs.Graph)
+         return Global_Nodes
+      with Pre => Is_Caller_Entity (E);
 
       procedure Fold_Subtree is new
         Fold3 (Entity_Id, Global_Graphs.Graph, Entity_Contract_Maps.Map, Fold);
@@ -1244,7 +1249,11 @@ package body Flow_Generated_Globals.Partial is
       -- Collect --
       -------------
 
-      procedure Collect (G : out Global_Nodes) is
+      function Collect
+        (E            : Entity_Id;
+         Global_Graph : Global_Graphs.Graph)
+         return Global_Nodes
+      is
 
          procedure Collect
            (Kind :     Global_Kind;
@@ -1262,7 +1271,7 @@ package body Flow_Generated_Globals.Partial is
          is
             Calls : constant Global_Graphs.Vertex_Id :=
               Global_Graph.Get_Vertex (Global_Id'(Kind   => Kind,
-                                                  Entity => Folded));
+                                                  Entity => E));
 
          begin
             Vars.Clear;
@@ -1279,22 +1288,28 @@ package body Flow_Generated_Globals.Partial is
             end loop;
          end Collect;
 
+         --  Local variables
+
+         Result : Global_Nodes;
+
       --  Start of processing for Collect
 
       begin
-         Collect (Proof_Ins, G.Proof_Ins);
-         Collect (Inputs,    G.Inputs);
-         Collect (Outputs,   G.Outputs);
+         Collect (Proof_Ins, Result.Proof_Ins);
+         Collect (Inputs,    Result.Inputs);
+         Collect (Outputs,   Result.Outputs);
 
-         G.Proof_Ins.Difference (G.Inputs);
+         Result.Proof_Ins.Difference (Result.Inputs);
 
          declare
             Proof_Ins_Outs : constant Node_Sets.Set :=
-              G.Proof_Ins and G.Outputs;
+              Result.Proof_Ins and Result.Outputs;
          begin
-            G.Proof_Ins.Difference (Proof_Ins_Outs);
-            G.Inputs.Union (Proof_Ins_Outs);
+            Result.Proof_Ins.Difference (Proof_Ins_Outs);
+            Result.Inputs.Union (Proof_Ins_Outs);
          end;
+
+         return Result;
       end Collect;
 
       ----------------------
@@ -1357,7 +1372,7 @@ package body Flow_Generated_Globals.Partial is
       if Folded = Analyzed
         or else Parent_Scope (Folded) = Analyzed
       then
-         Collect (Contr.Refined);
+         Contr.Refined := Collect (Folded, Global_Graph);
 
          declare
             Projected, Partial : Node_Sets.Set;
@@ -1379,8 +1394,20 @@ package body Flow_Generated_Globals.Partial is
               (Projected or Partial) -
               (Contr.Proper.Inputs or Contr.Proper.Outputs);
 
+            --  Handle package Initializes aspect
             if Ekind (Folded) = E_Package then
+               for Definite_Call of Contr.Definite_Calls loop
+                  declare
+                     G : constant Global_Nodes :=
+                       Collect (Definite_Call, Global_Graph);
+                  begin
+                     Contr.Initializes.Union
+                       ((G.Outputs - G.Inputs) and Contr.Local_Variables);
+                  end;
+               end loop;
+
                Up_Project (Contr.Initializes, Projected, Partial);
+
                for State of Partial loop
                   if Is_Fully_Written (State, Contr.Initializes) then
                      Projected.Include (State);
@@ -1390,7 +1417,7 @@ package body Flow_Generated_Globals.Partial is
             end if;
          end;
       else
-         Collect (Contr.Proper);
+         Contr.Proper := Collect (Folded, Global_Graph);
          --  ???
       end if;
 
