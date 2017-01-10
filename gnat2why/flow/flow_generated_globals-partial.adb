@@ -171,7 +171,8 @@ package body Flow_Generated_Globals.Partial is
       Remote_Calls      : Node_Sets.Set;
       --  Calls to routines in other compilation units
 
-      Local_Variables : Node_Sets.Set;
+      Local_Variables       : Node_Sets.Set;
+      Local_Ghost_Variables : Node_Sets.Set;
 
       Has_Terminate : Boolean;
       --  Only meaningful for subprograms and entries
@@ -731,6 +732,7 @@ package body Flow_Generated_Globals.Partial is
                Definite_Calls        => Contr.Definite_Calls,
                Conditional_Calls     => Contr.Conditional_Calls,
                Local_Variables       => Contr.Local_Variables,
+               Local_Ghost_Variables => Contr.Local_Ghost_Variables,
                Local_Subprograms     => Unused,
                Local_Definite_Writes => Contr.Initializes);
          end;
@@ -1819,6 +1821,8 @@ package body Flow_Generated_Globals.Partial is
              Definite_Calls        => To_Name_Set (Contr.Definite_Calls),
              Conditional_Calls     => To_Name_Set (Contr.Conditional_Calls),
              Local_Variables       => To_Name_Set (Contr.Local_Variables),
+             Local_Ghost_Variables => To_Name_Set
+                                        (Contr.Local_Ghost_Variables),
              Local_Subprograms     => <>,
              Local_Definite_Writes => To_Name_Set (Contr.Initializes),
              Has_Terminate         => Contr.Has_Terminate,

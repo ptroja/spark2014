@@ -154,6 +154,7 @@ package Flow_Generated_Globals is
       Conditional_Calls     : Name_Sets.Set; --  Flow/Frontend
 
       Local_Variables       : Name_Sets.Set; --  Flow
+      Local_Ghost_Variables : Name_Sets.Set; --  Flow
       Local_Subprograms     : Name_Sets.Set; --  Flow
       Local_Definite_Writes : Name_Sets.Set; --  Flow (only for packages)
 
