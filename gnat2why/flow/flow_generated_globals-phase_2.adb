@@ -3006,15 +3006,6 @@ package body Flow_Generated_Globals.Phase_2 is
       is
          G_Id  : constant Global_Id := G.Get_Key (V);
 
-         Shape : constant Node_Shape_T := (if G_Id.Kind = Variable
-                                           then Shape_Oval
-                                           else Shape_Box);
-
-         Fill  : constant Unbounded_String :=
-           (if G_Id.Kind = Variable
-            then To_Unbounded_String ("gray")
-            else Null_Unbounded_String);
-
          Label : constant String :=
            (case G_Id.Kind is
                when Proof_Ins => To_String (G_Id.Name) & "'Proof_Ins",
@@ -3024,9 +3015,11 @@ package body Flow_Generated_Globals.Phase_2 is
 
          Rv : constant Node_Display_Info := Node_Display_Info'
            (Show        => True,
-            Shape       => Shape,
+            Shape       => Shape_Box,
             Colour      => Null_Unbounded_String,
-            Fill_Colour => Fill,
+            Fill_Colour => (if G_Id.Kind = Variable
+                            then To_Unbounded_String ("gray")
+                            else Null_Unbounded_String),
             Label       => To_Unbounded_String (Label));
       begin
          return Rv;
