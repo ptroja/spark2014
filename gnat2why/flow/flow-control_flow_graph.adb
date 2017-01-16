@@ -5745,9 +5745,7 @@ package body Flow.Control_Flow_Graph is
             --    * discriminants of tasks (but these are only considered to be
             --      formal in parameters)
             Create_Initial_And_Final_Vertices
-              (FA.Analyzed_Entity,
-               Parameter_Kind,
-               FA);
+              (FA.Analyzed_Entity, Parameter_Kind, FA);
 
          when Kind_Package | Kind_Package_Body =>
             --  Create initial and final vertices for the package's state
@@ -6015,8 +6013,7 @@ package body Flow.Control_Flow_Graph is
             if FA.Kind = Kind_Package_Body then
                declare
                   Refined_State_N : constant Node_Id :=
-                    Get_Pragma (FA.Analyzed_Entity,
-                                Pragma_Refined_State);
+                    Get_Pragma (FA.Analyzed_Entity, Pragma_Refined_State);
 
                   DM : constant Dependency_Maps.Map :=
                     (if Present (Refined_State_N)
@@ -6103,7 +6100,7 @@ package body Flow.Control_Flow_Graph is
             end;
 
          when Kind_Task =>
-            --  No pre or post here.
+            --  No pre or post here
             null;
 
          when Kind_Package | Kind_Package_Body =>
@@ -6306,13 +6303,13 @@ package body Flow.Control_Flow_Graph is
                A : V_Attributes;
             begin
                if not FA.CFG.Contains (Change_Variant (F, Initial_Value)) then
-                  --  If the 'Initial and 'Final vertices do not
-                  --  already exist then we create them.
+                  --  If the 'Initial and 'Final vertices do not already exist
+                  --  then we create them.
 
-                  --  Setup the n'initial vertex.
+                  --  Setup the n'initial vertex
                   A := Make_Variable_Attributes (FA    => FA,
                                                  F_Ent => Change_Variant
-                                                   (F, Initial_Value),
+                                                           (F, Initial_Value),
                                                  Mode  => Mode_In_Out,
                                                  E_Loc => E);
 
@@ -6327,7 +6324,7 @@ package body Flow.Control_Flow_Graph is
                                       A,
                                       FA);
 
-                  --  Setup the n'final vertex.
+                  --  Setup the n'final vertex
                   Add_Vertex
                     (FA,
                      Change_Variant (F, Final_Value),
@@ -6346,10 +6343,10 @@ package body Flow.Control_Flow_Graph is
             --  this here, because otherwise we would have to do it in both
             --  Do_Call_Statement and Callect_Functions_And_Read_Locked_POs.
             if FA.Has_Only_Nonblocking_Statements
-              and then Ekind (E) /= E_Package
               and then (Is_Entry (E)
                           or else
-                        Is_Predefined_Potentially_Blocking (E))
+                        (Ekind (E) in E_Function | E_Procedure
+                         and then Is_Predefined_Potentially_Blocking (E)))
             then
                FA.Has_Only_Nonblocking_Statements := False;
             end if;
