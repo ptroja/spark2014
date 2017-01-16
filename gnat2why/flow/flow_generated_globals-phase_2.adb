@@ -1497,7 +1497,8 @@ package body Flow_Generated_Globals.Phase_2 is
                         --  Package_To_Locals_Map.
                         Package_To_Locals_Map.Insert
                           (V.The_Global_Info.Name,
-                           V.The_Global_Info.Local_Variables);
+                           V.The_Global_Info.Local_Variables or
+                           V.The_Global_Info.Local_Ghost_Variables);
 
                      when others =>
                         raise Program_Error;
