@@ -44,13 +44,6 @@ is
             Cur_Board (Cur_Piece.Y + 1) (Cur_Piece.X + 1) := Cur_Piece.S;
 
          when I =>
-            --  intermediate assertion needed for proof
-            pragma Assert
-              (for all YY in I_Delta =>
-                 (for all XX in I_Delta =>
-                    (if Possible_I_Shapes (Cur_Piece.D) (YY, XX) then
-                       Is_Empty (Cur_Board, Cur_Piece.Y + YY, Cur_Piece.X + XX))));
-
             for Y in I_Delta loop
                for X in I_Delta loop
                   if Possible_I_Shapes (Cur_Piece.D) (Y, X) then
@@ -60,13 +53,6 @@ is
             end loop;
 
          when Three_Shape =>
-            --  intermediate assertion needed for proof
-            pragma Assert
-              (for all YY in Three_Delta =>
-                 (for all XX in Three_Delta =>
-                    (if Possible_Three_Shapes (Cur_Piece.S, Cur_Piece.D) (YY, XX) then
-                       Is_Empty (Cur_Board, Cur_Piece.Y + YY, Cur_Piece.X + XX))));
-
             for Y in Three_Delta loop
                for X in Three_Delta loop
                   if Possible_Three_Shapes (Cur_Piece.S, Cur_Piece.D) (Y, X) then
@@ -81,7 +67,7 @@ is
    -- Delete_Complete_Lines --
    ---------------------------
 
-   procedure Delete_Complete_Lines is
+   procedure Delete_Complete_Lines (Num_Deleted : out Natural) is
       Empty_Line : constant Line := (others => Empty);
 
       To_Line : Y_Coord := Y_Coord'Last;
@@ -100,13 +86,17 @@ is
 
       --  iteratively move non-empty lines to the bottom of the board
 
+      Num_Deleted := 0;
+
       if Has_Complete_Lines then
          for From_Line in reverse Y_Coord'First .. To_Line - 1 loop
             pragma Loop_Invariant (From_Line < To_Line);
+            pragma Loop_Invariant (Num_Deleted + To_Line = Num_Deleted'Loop_Entry + To_Line'Loop_Entry);
             if not Is_Empty_Line (Cur_Board (From_Line)) then
                Cur_Board (To_Line) := Cur_Board (From_Line);
                Cur_Board (From_Line) := Empty_Line;
                To_Line := To_Line - 1;
+               Num_Deleted := Num_Deleted + 1;
             end if;
          end loop;
       end if;

@@ -175,14 +175,15 @@ is
          when Move_Down   => P'Update (Y => P.Y + 1),
          when Turn_Action => P'Update (D => Turn_Direction (P.D, A)));
 
-   procedure Do_Action (A : Action; Success : out Boolean);
+   procedure Do_Action (A : Action; Success : out Boolean) with
+     Global => (Input => Cur_Board, In_Out => Cur_Piece);
 
    procedure Include_Piece_In_Board with
      Global => (Input => Cur_Piece, In_Out => Cur_Board);
    --  transition from state where a piece is falling to its integration in the
    --  board when it cannot fall anymore.
 
-   procedure Delete_Complete_Lines with
+   procedure Delete_Complete_Lines (Num_Deleted : out Natural) with
      Global => (In_Out => Cur_Board);
    --  remove all complete lines from the board
 
