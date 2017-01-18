@@ -1246,9 +1246,9 @@ package body Flow_Generated_Globals.Phase_2 is
             declare
                II : Initializes_Info :=
                  (LHS       => P.Local_Definite_Writes
-                               and P.Local_Ghost_Variables,
-                  LHS_Proof => P.Local_Definite_Writes
                                and P.Local_Variables,
+                  LHS_Proof => P.Local_Definite_Writes
+                               and P.Local_Ghost_Variables,
                   RHS       => P.Proper.Inputs,
                   RHS_Proof => P.Proper.Proof_Ins);
                --  The new name dependency map for package P
