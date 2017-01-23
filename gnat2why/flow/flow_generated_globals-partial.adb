@@ -688,9 +688,29 @@ package body Flow_Generated_Globals.Partial is
          declare
             C : Contract renames Contracts (Analyzed);
 
+            S : constant Entity_Id := Scope (Analyzed);
+
          begin
             Filter_Local (Analyzed, C.Proper);
             Filter_Local (Analyzed, C.Refined);
+
+            --  Protected type appear as an implicit parameter to protected
+            --  subprograms and protected entries, and as a global to things
+            --  nested in them. After resolving calls from protected
+            --  subprograms and protected entries to their nested things the
+            --  type will also appear as a global of the protected
+            --  subprogram/entry. Here we strip it. ??? Conceptually this
+            --  belongs to Filter_Local where Scope_Same_Or_Within does not
+            --  capture this.
+
+            if Ekind (S) = E_Protected_Type then
+               C.Proper.Inputs.Exclude (S);
+               C.Proper.Outputs.Exclude (S);
+               C.Proper.Proof_Ins.Exclude (S);
+               C.Refined.Inputs.Exclude (S);
+               C.Refined.Outputs.Exclude (S);
+               C.Refined.Proof_Ins.Exclude (S);
+            end if;
          end;
       end if;
 
