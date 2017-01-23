@@ -434,7 +434,8 @@ package body Flow.Control_Flow_Graph is
       Mode          : Param_Mode;
       Uninitialized : Boolean;
       FA            : in out Flow_Analysis_Graphs)
-   with Pre => F.Kind in Direct_Mapping | Magic_String;
+   with Pre => F.Kind in Direct_Mapping | Magic_String
+               and then F.Variant = Normal_Use;
    --  Create the 'initial and 'final vertices for the given global and link
    --  them up to the start and end vertices.
 
@@ -1151,7 +1152,9 @@ package body Flow.Control_Flow_Graph is
    is
       M : Param_Mode;
 
-      procedure Process (F : Flow_Id);
+      procedure Process (F : Flow_Id)
+      with Pre => F.Kind in Direct_Mapping | Record_Field
+                  and then F.Variant = Normal_Use;
 
       -------------
       -- Process --
@@ -1168,17 +1171,20 @@ package body Flow.Control_Flow_Graph is
             else
                M);
 
+         F_Initial : constant Flow_Id := Change_Variant (F, Initial_Value);
+         F_Final   : constant Flow_Id := Change_Variant (F, Final_Value);
+
          Initial_Atr : constant V_Attributes :=
            Make_Variable_Attributes
              (FA    => FA,
-              F_Ent => Change_Variant (F, Initial_Value),
+              F_Ent => F_Initial,
               Mode  => PM,
               E_Loc => E);
 
          Final_Atr : constant V_Attributes :=
            Make_Variable_Attributes
              (FA    => FA,
-              F_Ent => Change_Variant (F, Final_Value),
+              F_Ent => F_Final,
               Mode  => PM,
               E_Loc => E);
 
@@ -1188,19 +1194,19 @@ package body Flow.Control_Flow_Graph is
          --  for declarative parts.
          Add_Vertex
            (FA,
-            Change_Variant (F, Initial_Value),
+            F_Initial,
             Initial_Atr,
             Initial_V);
          Linkup (FA, Initial_V, FA.Start_Vertex);
 
-         Create_Record_Tree (Change_Variant (F, Initial_Value),
+         Create_Record_Tree (F_Initial,
                              Initial_Atr,
                              FA);
 
          --  Setup the n'final vertex
          Add_Vertex
            (FA,
-            Change_Variant (F, Final_Value),
+            F_Final,
             Final_Atr,
             Final_V);
          Linkup (FA, FA.End_Vertex, Final_V);
@@ -1291,24 +1297,29 @@ package body Flow.Control_Flow_Graph is
       Uninitialized : Boolean;
       FA            : in out Flow_Analysis_Graphs)
    is
-      procedure Process (F : Flow_Id);
+      procedure Process (F : Flow_Id)
+      with Pre => F.Kind in Direct_Mapping | Record_Field | Magic_String
+                  and then F.Variant = Normal_Use;
 
       -------------
       -- Process --
       -------------
 
       procedure Process (F : Flow_Id) is
+         F_Initial : constant Flow_Id := Change_Variant (F, Initial_Value);
+         F_Final   : constant Flow_Id := Change_Variant (F, Final_Value);
+
          Initial_Atr : constant V_Attributes :=
            Make_Global_Variable_Attributes
              (FA     => FA,
-              F      => Change_Variant (F, Initial_Value),
+              F      => F_Initial,
               Mode   => Mode,
               Uninit => Uninitialized);
 
          Final_Atr : constant V_Attributes :=
            Make_Global_Variable_Attributes
              (FA   => FA,
-              F    => Change_Variant (F, Final_Value),
+              F    => F_Final,
               Mode => Mode);
 
          Initial_V, Final_V : Flow_Graphs.Vertex_Id;
@@ -1317,19 +1328,19 @@ package body Flow.Control_Flow_Graph is
          --  mode.
          Add_Vertex
            (FA,
-            Change_Variant (F, Initial_Value),
+            F_Initial,
             Initial_Atr,
             Initial_V);
          Linkup (FA, Initial_V, FA.Start_Vertex);
 
-         Create_Record_Tree (Change_Variant (F, Initial_Value),
+         Create_Record_Tree (F_Initial,
                              Initial_Atr,
                              FA);
 
          --  Setup the F'final vertex
          Add_Vertex
            (FA,
-            Change_Variant (F, Final_Value),
+            F_Final,
             Final_Atr,
             Final_V);
          Linkup (FA, FA.End_Vertex, Final_V);
@@ -5805,9 +5816,9 @@ package body Flow.Control_Flow_Graph is
             when Kind_Subprogram | Kind_Task =>
                declare
                   type G_Prop is record
+                     Is_Proof_In : Boolean;
                      Is_Read     : Boolean;
                      Is_Write    : Boolean;
-                     Is_Proof_In : Boolean;
                   end record;
 
                   package Global_Maps is new Ada.Containers.Hashed_Maps
@@ -5871,17 +5882,20 @@ package body Flow.Control_Flow_Graph is
                   end if;
 
                   for G of Proof_Ins loop
-                     Globals.Include (Change_Variant (G, Normal_Use),
-                                      G_Prop'(Is_Read     => False,
-                                              Is_Write    => False,
-                                              Is_Proof_In => True));
+                     Globals.Insert (Change_Variant (G, Normal_Use),
+                                     G_Prop'(Is_Proof_In => True,
+                                             Is_Read     => False,
+                                             Is_Write    => False));
                   end loop;
 
                   for G of Reads loop
+                     --  ??? here we should call Insert, because no global can
+                     --  be both a Proof_In and Input. But it is not always the
+                     --  case: apparently due to some bug in generated globals.
                      Globals.Include (Change_Variant (G, Normal_Use),
-                                      G_Prop'(Is_Read     => True,
-                                              Is_Write    => False,
-                                              Is_Proof_In => False));
+                                      G_Prop'(Is_Proof_In => False,
+                                              Is_Read     => True,
+                                              Is_Write    => False));
                   end loop;
 
                   for G of Writes loop
@@ -5889,22 +5903,23 @@ package body Flow.Control_Flow_Graph is
                         Position : Global_Maps.Cursor;
                         Inserted : Boolean;
 
-                        P : constant G_Prop := (Is_Read     => False,
-                                                Is_Write    => True,
-                                                Is_Proof_In => False);
-
                      begin
                         --  Attempt to insert mapping from G to P; if insertion
                         --  fails it means that a mapping was already present.
                         --  In this case update the existing property as write.
                         Globals.Insert
                           (Key      => Change_Variant (G, Normal_Use),
-                           New_Item => P,
+                           New_Item => (Is_Proof_In => False,
+                                        Is_Read     => False,
+                                        Is_Write    => True),
                            Position => Position,
                            Inserted => Inserted);
 
                         if not Inserted then
                            Globals (Position).Is_Write := True;
+
+                           --  Check that G is not both a Proof_In and Output
+                           pragma Assert (not Globals (Position).Is_Proof_In);
                         end if;
 
                         --  Emit error if it is a global output of a function;
