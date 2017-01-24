@@ -361,6 +361,7 @@ package body Flow_Generated_Globals.Partial is
                   | E_Function
                   | E_Procedure
                   | E_Task_Type
+                  | E_Protected_Type
                =>
                   Get_Flow_Scope (Get_Body (E)),
 
@@ -490,7 +491,7 @@ package body Flow_Generated_Globals.Partial is
          end if;
       else
          Debug ("Adding to graph (proper):", E);
-         Add_Globals (Contr.Proper);
+         Add_Down_Projected_Globals (Contr.Proper);
       end if;
 
       --  For proof calls connect the caller's Proof_Ins vertex to the callee's
@@ -1391,57 +1392,50 @@ package body Flow_Generated_Globals.Partial is
    begin
       Debug ("Folding", Folded);
 
-      if Folded = Analyzed
-        or else Parent_Scope (Folded) = Analyzed
-      then
-         Contr.Refined := Collect (Folded, Global_Graph);
+      Contr.Refined := Collect (Folded, Global_Graph);
 
-         declare
-            Projected, Partial : Node_Sets.Set;
-         begin
-            Up_Project (Contr.Refined.Inputs, Projected, Partial);
-            Contr.Proper.Inputs := Projected or Partial;
+      declare
+         Projected, Partial : Node_Sets.Set;
+      begin
+         Up_Project (Contr.Refined.Inputs, Projected, Partial);
+         Contr.Proper.Inputs := Projected or Partial;
 
-            Up_Project (Contr.Refined.Outputs, Projected, Partial);
+         Up_Project (Contr.Refined.Outputs, Projected, Partial);
+         for State of Partial loop
+            if not Is_Fully_Written (State, Contr.Refined.Outputs)
+            then
+               Contr.Proper.Inputs.Include (State);
+            end if;
+         end loop;
+         Contr.Proper.Outputs := Projected or Partial;
+
+         Up_Project (Contr.Refined.Proof_Ins, Projected, Partial);
+         Contr.Proper.Proof_Ins :=
+           (Projected or Partial) -
+           (Contr.Proper.Inputs or Contr.Proper.Outputs);
+
+         --  Handle package Initializes aspect
+         if Ekind (Folded) = E_Package then
+            for Definite_Call of Contr.Definite_Calls loop
+               declare
+                  G : constant Global_Nodes :=
+                    Collect (Definite_Call, Global_Graph);
+               begin
+                  Contr.Initializes.Union
+                    ((G.Outputs - G.Inputs) and Contr.Local_Variables);
+               end;
+            end loop;
+
+            Up_Project (Contr.Initializes, Projected, Partial);
+
             for State of Partial loop
-               if not Is_Fully_Written (State, Contr.Refined.Outputs)
-               then
-                  Contr.Proper.Inputs.Include (State);
+               if Is_Fully_Written (State, Contr.Initializes) then
+                  Projected.Include (State);
                end if;
             end loop;
-            Contr.Proper.Outputs := Projected or Partial;
-
-            Up_Project (Contr.Refined.Proof_Ins, Projected, Partial);
-            Contr.Proper.Proof_Ins :=
-              (Projected or Partial) -
-              (Contr.Proper.Inputs or Contr.Proper.Outputs);
-
-            --  Handle package Initializes aspect
-            if Ekind (Folded) = E_Package then
-               for Definite_Call of Contr.Definite_Calls loop
-                  declare
-                     G : constant Global_Nodes :=
-                       Collect (Definite_Call, Global_Graph);
-                  begin
-                     Contr.Initializes.Union
-                       ((G.Outputs - G.Inputs) and Contr.Local_Variables);
-                  end;
-               end loop;
-
-               Up_Project (Contr.Initializes, Projected, Partial);
-
-               for State of Partial loop
-                  if Is_Fully_Written (State, Contr.Initializes) then
-                     Projected.Include (State);
-                  end if;
-               end loop;
-               Contr.Initializes := Projected;
-            end if;
-         end;
-      else
-         Contr.Proper := Collect (Folded, Global_Graph);
-         --  ???
-      end if;
+            Contr.Initializes := Projected;
+         end if;
+      end;
 
       Filter_Local (Analyzed, Contr.Proof_Calls);
       Filter_Local (Analyzed, Contr.Definite_Calls);
