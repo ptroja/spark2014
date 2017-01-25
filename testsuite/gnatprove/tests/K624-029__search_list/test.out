@@ -1,19 +1,36 @@
-linked_list.adb:4:22: info: precondition proved (CVC4: 1 VC)
-linked_list.adb:6:13: info: initialization of "Cu" proved
+a-cfdlli.ads:87:55: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:405:51: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:523:51: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:604:57: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:664:57: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:741:28: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:741:39: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:904:45: info: overflow check proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1052:06: info: disjoint contract cases proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1169:18: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1181:18: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1193:18: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1206:18: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1225:14: info: precondition proved (CVC4: 2 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1267:14: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cfdlli.ads:1271:32: info: precondition proved (CVC4: 1 VC), in instantiation at linked_list.ads:6
+a-cofuve.ads:227:61: info: range check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at linked_list.ads:6
+a-cofuve.ads:229:19: info: overflow check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at linked_list.ads:6
+a-cofuve.ads:229:36: info: overflow check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at linked_list.ads:6
+a-cofuve.ads:229:48: info: range check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at linked_list.ads:6
+a-cofuve.ads:288:52: info: overflow check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at linked_list.ads:6
+linked_list.adb:6:13: info: initialization of "Cu.Node" proved
 linked_list.adb:8:13: info: loop invariant initialization proved (CVC4: 2 VC)
 linked_list.adb:8:13: info: loop invariant preservation proved (CVC4: 2 VC)
-linked_list.adb:8:13: info: precondition proved (CVC4: 1 VC)
-linked_list.adb:8:29: info: initialization of "Cu" proved
-linked_list.adb:9:21: info: precondition proved (CVC4: 1 VC)
-linked_list.adb:9:31: info: precondition proved (CVC4: 1 VC)
-linked_list.adb:11:13: info: precondition proved (CVC4: 1 VC)
-linked_list.adb:11:25: info: initialization of "Cu" proved
-linked_list.adb:12:20: info: initialization of "Cu" proved
-linked_list.adb:15:10: info: precondition proved (CVC4: 1 VC)
-linked_list.adb:15:19: info: initialization of "Cu" proved
-linked_list.ads:12:14: info: postcondition proved (CVC4: 1 VC)
-linked_list.ads:12:56: info: precondition proved (CVC4: 1 VC)
-linked_list.ads:13:07: info: precondition proved (CVC4: 1 VC)
-linked_list.ads:14:07: info: precondition proved (CVC4: 1 VC)
-linked_list.ads:15:15: info: precondition proved (CVC4: 1 VC)
-linked_list.ads:15:25: info: precondition proved (CVC4: 1 VC)
+linked_list.adb:8:29: info: initialization of "Cu.Node" proved
+linked_list.adb:9:37: info: precondition proved (CVC4: 1 VC)
+linked_list.adb:10:22: info: precondition proved (CVC4: 2 VC)
+linked_list.adb:12:13: info: precondition proved (CVC4: 1 VC)
+linked_list.adb:12:25: info: initialization of "Cu.Node" proved
+linked_list.adb:13:20: info: initialization of "Cu.Node" proved
+linked_list.adb:16:10: info: precondition proved (CVC4: 1 VC)
+linked_list.adb:16:19: info: initialization of "Cu.Node" proved
+linked_list.ads:10:14: info: postcondition proved (CVC4: 1 VC)
+linked_list.ads:12:07: info: precondition proved (CVC4: 1 VC)
+linked_list.ads:13:31: info: precondition proved (CVC4: 1 VC)
+linked_list.ads:14:16: info: precondition proved (CVC4: 2 VC)

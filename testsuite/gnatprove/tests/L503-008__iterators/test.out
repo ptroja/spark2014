@@ -1,10 +1,30 @@
-p.adb:25:13: info: precondition proved (CVC4: 1 VC)
-p.adb:26:14: info: initialization of "C" proved
+a-cfdlli.ads:87:55: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:405:51: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:523:51: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:604:57: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:664:57: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:741:28: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:741:39: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:904:45: info: overflow check proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1052:06: info: disjoint contract cases proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1169:18: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1181:18: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1193:18: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1206:18: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1225:14: info: precondition proved (CVC4: 2 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1267:14: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cfdlli.ads:1271:32: info: precondition proved (CVC4: 1 VC), in instantiation at p.ads:15
+a-cofuve.ads:227:61: info: range check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at p.ads:15
+a-cofuve.ads:229:19: info: overflow check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at p.ads:15
+a-cofuve.ads:229:36: info: overflow check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at p.ads:15
+a-cofuve.ads:229:48: info: range check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at p.ads:15
+a-cofuve.ads:288:52: info: overflow check proved (CVC4: 1 VC), in instantiation at a-cfdlli.ads:67, in instantiation at p.ads:15
+p.adb:26:14: info: initialization of "C.Node" proved
 p.adb:27:18: info: initialization of "Sum" proved
-p.adb:27:22: medium: overflow check might fail (e.g. when Sum = -1)
-p.adb:27:32: medium: precondition might fail (e.g. when Sum = 0)
-p.adb:27:44: info: initialization of "C" proved
-p.adb:28:19: medium: precondition might fail
-p.adb:28:29: info: initialization of "C" proved
+p.adb:27:22: medium: overflow check might fail (e.g. when Sum = 0)
+p.adb:27:32: medium: precondition might fail (e.g. when C = (Node => 2) and Sum = 0)
+p.adb:27:44: info: initialization of "C.Node" proved
+p.adb:28:19: medium: precondition might fail (e.g. when C = (Node => 2) and No_Element = (Node => 0))
+p.adb:28:29: info: initialization of "C.Node" proved
 p.ads:18:14: warning: subprogram "Iter_Over_Lists" has no effect
 p.ads:20:14: warning: subprogram "Quant_Over_Lists" has no effect
