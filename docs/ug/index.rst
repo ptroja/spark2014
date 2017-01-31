@@ -57,20 +57,6 @@ SPARK 2014 User's Guide
       en/appendix
       gfdl
 
-.. only:: core_ja
-
-   .. toctree::
-      :maxdepth: 3
-      :numbered: 4
-
-      ja/getting_started_ja
-      ja/introduction_ja
-      ja/install_ja
-      ja/spark_mode_ja
-      ja/spark_2014_ja
-      ja/gnatprove_ja
-      gfdl
-
 .. Indices and tables
 .. ==================
 

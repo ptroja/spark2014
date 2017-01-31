@@ -16,16 +16,18 @@ import sys, os, time
 # AdaCore specific Ada/SPARK highlighter, that does not crash
 
 try:
-    import gnatpython.ada_pygments
+    sphinx_support_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), '..', '..', 'sphinx_support')
+    sys.path.append(sphinx_support_dir)
+    import ada_pygments
     use_adacore_parser = True
-
 except ImportError:
     use_adacore_parser = False
 
 def setup(app):
     app.add_config_value('Display_Trace_Units',False,True)
     if use_adacore_parser:
-    	app.add_lexer('ada', gnatpython.ada_pygments.AdaLexer())
+        app.add_lexer('ada', ada_pygments.AdaLexer())
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -205,14 +207,8 @@ with open('gfdl.tex', 'r') as fd:
    gfdl = fd.read()
 
 latex_elements = {
-# The paper size ('letter' or 'a4').
-#latex_paper_size = 'letter'
-
-# The font size ('10pt', '11pt' or '12pt').
-#latex_font_size = '10pt'
-
-# Additional stuff for the LaTeX preamble.
-'tableofcontents': gfdl + '\n\n\\tableofcontents\n',
+    'preamble': '\setcounter{tocdepth}{3}',
+    'tableofcontents': gfdl + '\n\n\\tableofcontents\n',
 }
 
 # Grouping the document tree into LaTeX files. List of tuples
@@ -235,9 +231,6 @@ latex_documents = [
 
 # If true, show URL addresses after external links.
 #latex_show_urls = False
-
-# Additional stuff for the LaTeX preamble.
-latex_preamble = '\setcounter{tocdepth}{3}'
 
 # Documents to append as an appendix to all manuals.
 #latex_appendices = []

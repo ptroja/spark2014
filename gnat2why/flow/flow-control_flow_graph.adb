@@ -3520,8 +3520,7 @@ package body Flow.Control_Flow_Graph is
                or else Has_Inherited_DIC (Typ))
            and then Present (DIC_Procedure (Typ))
          then
-            Expr := Get_Expr_From_Check_Only_Proc
-              (DIC_Procedure (Typ));
+            Expr := Get_Expr_From_Check_Only_Proc (DIC_Procedure (Typ));
 
             if Present (Expr) then
                --  Note that default initial conditions can make use of
@@ -3546,8 +3545,7 @@ package body Flow.Control_Flow_Graph is
 
                --  Calculate components of Type and Object
                Components_Of_Type   :=
-                 Flatten_Variable (First_Entity
-                                     (DIC_Procedure (Typ)),
+                 Flatten_Variable (First_Entity (DIC_Procedure (Typ)),
                                    FA.B_Scope);
                Components_Of_Object :=
                  Flatten_Variable (E, FA.B_Scope);
@@ -4551,7 +4549,7 @@ package body Flow.Control_Flow_Graph is
                Msg      => "type & is not fully initialized",
                N        => N,
                F1       => Direct_Mapping_Id (Typ),
-               Tag      => Default_Initialization_Missmatch,
+               Tag      => Default_Initialization_Mismatch,
                Severity => Medium_Check_Kind);
          end if;
       end if;
@@ -5769,18 +5767,20 @@ package body Flow.Control_Flow_Graph is
 
             if Is_Generic_Instance (FA.Spec_Entity) then
                declare
-                  procedure Create_In_And_Fin_Vert (Formal    : Node_Id;
-                                                    Parameter : Node_Id);
+                  procedure Create_Parameter_Vertices (Formal    : Node_Id;
+                                                       Parameter : Node_Id);
+                  --  Create initial and final vertices for parameters of the
+                  --  generic instance.
 
                   procedure Create_Vertices is new
-                    Iterate_Generic_Parameters (Create_In_And_Fin_Vert);
+                    Iterate_Generic_Parameters (Create_Parameter_Vertices);
 
-                  ----------------------------
-                  -- Create_In_And_Fin_Vert --
-                  ----------------------------
+                  -------------------------------
+                  -- Create_Parameter_Vertices --
+                  -------------------------------
 
-                  procedure Create_In_And_Fin_Vert (Formal    : Node_Id;
-                                                    Parameter : Node_Id)
+                  procedure Create_Parameter_Vertices (Formal    : Node_Id;
+                                                       Parameter : Node_Id)
                   is
                      pragma Unreferenced (Formal);
                      Parent_N : constant Node_Id := Parent (Parameter);
@@ -5801,7 +5801,7 @@ package body Flow.Control_Flow_Graph is
                            False,
                            FA);
                      end if;
-                  end Create_In_And_Fin_Vert;
+                  end Create_Parameter_Vertices;
 
                begin
                   Create_Vertices (FA.Spec_Entity);
