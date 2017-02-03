@@ -1902,10 +1902,7 @@ package body Flow_Utility is
    -- Get_Implicit_Formal --
    -------------------------
 
-   function Get_Implicit_Formal
-     (E : Entity_Id)
-      return Entity_Id
-   is
+   function Get_Implicit_Formal (E : Entity_Id) return Entity_Id is
    begin
       case Ekind (E) is
          when E_Entry | E_Function | E_Procedure =>
@@ -1919,9 +1916,7 @@ package body Flow_Utility is
 
          when E_Task_Type =>
             --  A task sees itself as a formal parameter
-            return (if Present (Anonymous_Object (E))
-                    then Anonymous_Object (E)
-                    else E);
+            return E;
 
          when others =>
             raise Program_Error;
