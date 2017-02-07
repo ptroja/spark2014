@@ -2382,6 +2382,10 @@ package body Flow_Generated_Globals.Phase_2 is
                function Scope (EN : Entity_Name) return Entity_Name;
                --  Equivalent of Sinfo.Scope for entity names
 
+               function Scope_Within_Or_Same (Scope1, Scope2 : Entity_Name)
+                                              return Boolean;
+               --  Equivalent of Sem_Util.Scope_Within_Or_Same for entity names
+
                -----------
                -- Scope --
                -----------
@@ -2401,6 +2405,26 @@ package body Flow_Generated_Globals.Phase_2 is
                begin
                   return To_Entity_Name (S (1 .. J - 1));
                end Scope;
+
+               --------------------------
+               -- Scope_Within_Or_Same --
+               --------------------------
+
+               function Scope_Within_Or_Same (Scope1, Scope2 : Entity_Name)
+                                              return Boolean
+               is
+                  Scope1_Str : constant String := To_String (Scope1);
+                  Scope2_Str : constant String := To_String (Scope2);
+
+               begin
+                  return
+                    Scope1_Str'Length >= Scope2_Str'Length
+                      and then
+                        Scope1_Str
+                          (Scope2_Str'First ..
+                           Scope2_Str'First + Scope2_Str'Length - 1) =
+                        Scope2_Str;
+               end Scope_Within_Or_Same;
 
             --  Start of processing for Up_Project
 
@@ -2422,7 +2446,9 @@ package body Flow_Generated_Globals.Phase_2 is
                                 Comp_State_Map (S);
 
                            begin
-                              if Scope (State) = Scope (Folded) then
+                              if Scope_Within_Or_Same (Scope (Folded),
+                                                       Scope (State))
+                              then
                                  Partial.Include (State);
                               else
                                  Projected.Include (Var);
