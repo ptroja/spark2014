@@ -384,10 +384,25 @@ package body Flow_Refinement is
       Body_E : constant Entity_Id := Get_Body_Entity (E);
 
    begin
+      --  Pretend that expression functions declared in package spec are in
+      --  package body.
+      --  ??? There are other places in code where we also took this decision
+      if Is_Expression_Function (E) then
+         declare
+            Scop : constant Flow_Scope := Get_Flow_Scope (E);
+
+         begin
+            return No (Scop)
+              or else Is_Visible (Body_Scope (Get_Flow_Scope (E)), S);
+         end;
+
       --  To see the refinement there must be some body and it must be visible
       --  (which is never the case if we look from the Standard scope).
-      return Present (Body_E)
-        and then Is_Visible (Get_Flow_Scope (Body_E), S);
+
+      else
+         return Present (Body_E)
+           and then Is_Visible (Get_Flow_Scope (Body_E), S);
+      end if;
    end Subprogram_Refinement_Is_Visible;
 
    ---------------------------------
