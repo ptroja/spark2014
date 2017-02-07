@@ -56,6 +56,8 @@ package body Flow_Generated_Globals.Phase_2 is
    GG_Generated : Boolean := False;
    --  Set to True by GG_Read once the Global Graph has been generated.
 
+   Debug_Global_Graph : constant Boolean := XXX and True;
+
    ---------------------------------------------------
    -- Regular expression for predefined subprograms --
    ---------------------------------------------------
@@ -1839,6 +1841,10 @@ package body Flow_Generated_Globals.Phase_2 is
               (Targets     : Name_Sets.Set;
                Connections : Connections_Kinds)
             is
+               function Image (G : Global_Id) return String is
+                 (To_String (G.Name) & "'" & Vertex_Kind'Image (G.Kind));
+               --  Convert global G to string usable for debugging
+
             begin
                for Target_Name of Targets loop
                   for Connection of Connections loop
@@ -1858,6 +1864,13 @@ package body Flow_Generated_Globals.Phase_2 is
                         --  ??? repeated Include_Vertex and searching for
                         --  Add_Edge is ineffcient, but this needs to be
                         --  fixed in the Graphs API.
+
+                        if Debug_Global_Graph then
+                           Ada.Text_IO.Put_Line
+                             ("  " &
+                                Image (Source) & " -> " &
+                                Image (Target));
+                        end if;
                      end;
                   end loop;
                end loop;
