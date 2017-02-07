@@ -2395,8 +2395,15 @@ package body Flow_Generated_Globals.Phase_2 is
                Collect (Inputs,    Refined.Inputs);
                Collect (Outputs,   Refined.Outputs);
 
-               Refined.Proof_Ins.Difference
-                 (Refined.Inputs or Refined.Outputs);
+               Refined.Proof_Ins.Difference (Refined.Inputs);
+
+               declare
+                  Proof_Ins_Outs : constant Name_Sets.Set :=
+                    Refined.Proof_Ins and Refined.Outputs;
+               begin
+                  Refined.Proof_Ins.Difference (Proof_Ins_Outs);
+                  Refined.Inputs.Union (Proof_Ins_Outs);
+               end;
 
                Up_Project (Refined.Proof_Ins, Projected, Partial);
                Proper.Proof_Ins := Projected or Partial;
