@@ -449,6 +449,43 @@ package body Flow_Generated_Globals.Phase_2 is
 
       procedure Populate_Results (G : Globals);
 
+      procedure Down_Project (Vars : in out Flow_Id_Sets.Set);
+      --  ??? In other code (which perhaps should be deleted) this is called
+      --  Expand; we should decide on a single name. Also, this should be
+      --  a function.
+
+      ------------------
+      -- Down_Project --
+      ------------------
+
+      procedure Down_Project (Vars : in out Flow_Id_Sets.Set) is
+         Projected : Flow_Id_Sets.Set;
+
+      begin
+         for Var of Vars loop
+            case Var.Kind is
+               when Direct_Mapping =>
+                  --  ??? this expression involves a lot of unnecessary
+                  --  conversions; this is the price for broken API.
+                  Projected.Union
+                    (Change_Variant
+                       (To_Flow_Id_Set
+                          (Flow_Refinement.Down_Project
+                                 (Get_Direct_Mapping_Id (Var), S)),
+                       Variant => Var.Variant));
+
+               when Magic_String =>
+                  Projected.Insert (Var);
+
+               when others =>
+                  raise Program_Error;
+            end case;
+         end loop;
+
+         Flow_Id_Sets.Move (Target => Vars,
+                            Source => Projected);
+      end Down_Project;
+
       ----------------------
       -- Populate_Results --
       ----------------------
@@ -464,10 +501,25 @@ package body Flow_Generated_Globals.Phase_2 is
 
    begin
       if Entity_Contract_Maps.Has_Element (C) then
-         Populate_Results
-           (if Subprogram_Refinement_Is_Visible (E, S)
-            then Global_Contracts (C).Refined
-            else Global_Contracts (C).Proper);
+         declare
+            Refined : constant Boolean :=
+              Subprogram_Refinement_Is_Visible (E, S);
+
+         begin
+            Populate_Results
+              (if Refined
+               then Global_Contracts (C).Refined
+               else Global_Contracts (C).Proper);
+
+            --  Refined globals are given as they are; proper globals need to
+            --  be expanded when the subprogram is called from package body.
+
+            if not Refined then
+               Down_Project (Proof_Reads);
+               Down_Project (Reads);
+               Down_Project (Writes);
+            end if;
+         end;
       else
          Proof_Reads.Clear;
          Reads.Clear;
