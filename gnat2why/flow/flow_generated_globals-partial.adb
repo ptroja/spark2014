@@ -1305,7 +1305,7 @@ package body Flow_Generated_Globals.Partial is
                   Global : Global_Id renames Global_Graph.Get_Key (V);
                begin
                   if Global.Kind = Variable then
-                     Vars.Include (Global.Entity);
+                     Vars.Insert (Global.Entity);
                   end if;
                end;
             end loop;
