@@ -1123,6 +1123,11 @@ package body Flow_Generated_Globals.Partial is
                         Contr.Definite_Calls);
                end if;
 
+               if not Contr.Remote_Calls.Is_Empty then
+                  Ada.Text_IO.Put_Line (Indent & Indent & "Calls:");
+                  Dump (Indent & Indent & "Remote     ", Contr.Remote_Calls);
+               end if;
+
                case Ekind (E) is
                   when E_Function | E_Procedure =>
                      --  Ada.Text_IO.Put_Line
