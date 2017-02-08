@@ -1059,7 +1059,16 @@ package body Flow_Generated_Globals.Phase_2 is
 
             procedure Seed_Call_Graph (E : Entity_Id) is
             begin
-               if Ekind (E) in Entry_Kind | E_Function | E_Procedure
+               --  Seed the call graph with entities that might be called from
+               --  somewhere, either because they are proper subroutines or
+               --  because they are packages "called" from the elaboration.
+               --  ??? I am not sure about packages nested in subprograms;
+               --  their "remote_calls" should be propagated to their enclosing
+               --  subprograms, I think (but I don't this this happens now).
+               if (Ekind (E) in Entry_Kind | E_Function | E_Procedure
+                     or else
+                   (Ekind (E) = E_Package
+                      and then Is_Library_Level_Entity (E)))
                  and then Entity_In_SPARK (E)
                then
                   declare
@@ -1276,30 +1285,6 @@ package body Flow_Generated_Globals.Phase_2 is
       ----------------------------------
 
       procedure Generate_Initializes_Aspects is
-
-         procedure GG_Get_Most_Refined_Globals
-           (Caller      :     Entity_Name;
-            Proof_Reads : out Name_Sets.Set;
-            Reads       : out Name_Sets.Set;
-            Writes      : out Name_Sets.Set);
-         --  Gets the most refined globals of a subprogram
-
-         ---------------------------------
-         -- GG_Get_Most_Refined_Globals --
-         ---------------------------------
-
-         procedure GG_Get_Most_Refined_Globals
-           (Caller      :     Entity_Name;
-            Proof_Reads : out Name_Sets.Set;
-            Reads       : out Name_Sets.Set;
-            Writes      : out Name_Sets.Set)
-         is
-         begin
-            null;
-         end GG_Get_Most_Refined_Globals;
-
-      --  Start of processing for Generate_Initializes_Aspects
-
       begin
          for P of Package_Info_List loop
             declare
@@ -1317,6 +1302,43 @@ package body Flow_Generated_Globals.Phase_2 is
                --  the right hand side of the generated Initializes aspect;
                --  they are initialized with package inputs and proof inputs,
                --  respectively.
+
+               procedure GG_Get_Most_Refined_Globals
+                 (Caller      :     Entity_Name;
+                  Proof_Reads : out Name_Sets.Set;
+                  Reads       : out Name_Sets.Set;
+                  Writes      : out Name_Sets.Set);
+               --  Gets the most refined globals of a subprogram
+
+               ---------------------------------
+               -- GG_Get_Most_Refined_Globals --
+               ---------------------------------
+
+               procedure GG_Get_Most_Refined_Globals
+                 (Caller      :     Entity_Name;
+                  Proof_Reads : out Name_Sets.Set;
+                  Reads       : out Name_Sets.Set;
+                  Writes      : out Name_Sets.Set)
+               is
+                  C : constant Entity_Contract_Maps.Cursor :=
+                    Global_Contracts.Find (Caller);
+
+               begin
+                  --  ??? the following is weird, I know. But it is actually
+                  --  very close to the old GG code (where Initialized were
+                  --  quite broken anyway).
+
+                  if Entity_Contract_Maps.Has_Element (C) then
+                     declare
+                        Refined : Globals renames Global_Contracts (C).Refined;
+
+                     begin
+                        Proof_Reads := Refined.Proof_Ins;
+                        Reads       := Refined.Inputs;
+                        Writes      := Refined.Outputs;
+                     end;
+                  end if;
+               end GG_Get_Most_Refined_Globals;
 
             begin
                --  Extend the LHSs with pure outputs (outputs that are not also
