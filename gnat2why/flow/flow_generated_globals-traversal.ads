@@ -21,12 +21,70 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Ada.Containers.Hashed_Maps;
+
 package Flow_Generated_Globals.Traversal is
 
    procedure Build_Tree (CU : Node_Id);
    --  Traverse compilation unit CU to build a traversal tree
 
    procedure Dump_Tree;
+
+   type Nested is record
+      Subprograms : Node_Lists.List;
+      Packages    : Node_Lists.List;
+      Parent      : Entity_Id;
+   end record with
+     Iterable => (First       => First_Cursor,
+                  Next        => Next_Cursor,
+                  Has_Element => Has_Element,
+                  Element     => Get_Element);
+
+   use type Node_Lists.Cursor;
+
+   function First_Cursor (Cont : Nested) return Node_Lists.Cursor is
+     (if Cont.Subprograms.Is_Empty
+      then Cont.Packages.First
+      else Cont.Subprograms.First);
+
+   function Next_Cursor
+     (Cont     : Nested;
+      Position : Node_Lists.Cursor)
+      return Node_Lists.Cursor
+   is
+     (if Position = Cont.Subprograms.Last
+      then Cont.Packages.First
+      else Node_Lists.Next (Position));
+
+   function Has_Element
+     (Cont     : Nested;
+      Position : Node_Lists.Cursor)
+      return Boolean
+   is
+     (Node_Lists.Has_Element (Position));
+
+   function Get_Element
+     (Cont     : Nested;
+      Position : Node_Lists.Cursor)
+      return Entity_Id
+   is
+     (Node_Lists.Element (Position));
+
+   package Nested_Scopes is new
+     Ada.Containers.Hashed_Maps (Key_Type        => Entity_Id,
+                                 Element_Type    => Nested,
+                                 Hash            => Node_Hash,
+                                 Equivalent_Keys => "=",
+                                 "="             => "=");
+
+   Scope_Map : Nested_Scopes.Map;
+   --  Hierarchical container with entities processed by the flow analysis,
+   --  i.e. functions, procedures, entries (collectively known as subprograms)
+   --  and packages, protected types and task types (collectively known as
+   --  packages, sic). The hierarchy of its contents mirrors the hierarchy
+   --  of the analyzed code.
+   --
+   --  ??? this is publicly visible only to make iteration easier
 
    subtype Container_Scope is Entity_Kind
      with Static_Predicate => Container_Scope in Entry_Kind       |
@@ -46,54 +104,14 @@ package Flow_Generated_Globals.Traversal is
    function Is_Leaf (E : Entity_Id) return Boolean;
    --  Returns True iff E is a leaf of the traversal tree
 
-   generic
-      with procedure Process (E : Entity_Id);
-   procedure Fold0 (E : Entity_Id)
-   with Pre => Ekind (E) in Container_Scope;
-
-   generic
-      type Context (<>) is limited private;
-      with procedure Process (E   :        Entity_Id;
-                              Ctx : in out Context);
-   procedure Fold1 (E   :        Entity_Id;
-                    Ctx : in out Context)
-   with Pre => Ekind (E) in Container_Scope;
-
-   generic
-      type Context1 (<>) is limited private;
-      type Context2 (<>) is limited private;
-      with procedure Process (E    :        Entity_Id;
-                              Ctx1 :        Context1;
-                              Ctx2 : in out Context2);
-   procedure Fold2 (E    :        Entity_Id;
-                    Ctx1 :        Context1;
-                    Ctx2 : in out Context2)
-   with Pre => Ekind (E) in Container_Scope;
-
-   generic
-      type Context1 (<>) is limited private;
-      type Context2 (<>) is limited private;
-      type Context3 (<>) is limited private;
-      with procedure Process (E    :        Entity_Id;
-                              Ctx1 :        Context1;
-                              Ctx2 :        Context2;
-                              Ctx3 : in out Context3);
-   procedure Fold3 (E    :        Entity_Id;
-                    Ctx1 :        Context1;
-                    Ctx2 :        Context2;
-                    Ctx3 : in out Context3)
-   with Pre => Ekind (E) in Container_Scope;
-
-   --  Call Process on each scope nested in E; first on packages, then on
-   --  subprograms.
-
-   procedure Iterate_Main_Unit
-     (Process : not null access procedure (E : Entity_Id));
-   --  Iterate over scopes of the main unit in bottom-up fashion
-
    function Parent_Scope (E : Entity_Id) return Entity_Id
    with Pre  => Ekind (E) in Container_Scope,
         Post => Ekind (Parent_Scope'Result) in Container_Scope;
    --  Returns the parent scope of E (in the flow nesting sense)
+
+   procedure Iterate_Main_Unit
+     (Process : not null access procedure (E : Entity_Id));
+   --  Iterate over scopes of the main unit in bottom-up fashion
+   --  ??? deprecated
 
 end Flow_Generated_Globals.Traversal;

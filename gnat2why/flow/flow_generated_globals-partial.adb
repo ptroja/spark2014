@@ -328,10 +328,6 @@ package body Flow_Generated_Globals.Partial is
       --  Connect subprogram's vertices to the corresponding variables:
       --  proof inputs, inputs and outputs.
 
-      procedure Add_Subtree is new
-        Fold3 (Entity_Id, Entity_Contract_Maps.Map, Global_Graphs.Graph, Add);
-      --  Recursively add entities to the global graph
-
       type Edge_Kind is record
          Source, Target : Global_Kind;
       end record
@@ -535,17 +531,15 @@ package body Flow_Generated_Globals.Partial is
                 3 => (Source => Inputs,    Target => Outputs),
                 4 => (Source => Outputs,   Target => Outputs)));
 
-      Add_Subtree (E, Analyzed, Contracts, Global_Graph);
+      for Child of Scope_Map (E) loop
+         Add (Child, Analyzed, Contracts, Global_Graph);
+      end loop;
    end Add;
 
    procedure Add_Nonreturning (E          :        Entity_Id;
                                Contracts  :        Entity_Contract_Maps.Map;
                                Call_Graph : in out Call_Graphs.Graph)
    is
-      procedure Add_Subtree is new
-        Fold2 (Entity_Contract_Maps.Map, Call_Graphs.Graph, Add_Nonreturning);
-      --  Recursively call the current procedure for all the nested entities
-
    begin
       if Is_Callee (E) then
          Call_Graph.Include_Vertex (E);
@@ -568,7 +562,9 @@ package body Flow_Generated_Globals.Partial is
          end loop;
       end if;
 
-      Add_Subtree (E, Contracts, Call_Graph);
+      for Child of Scope_Map (E) loop
+         Add_Nonreturning (Child, Contracts, Call_Graph);
+      end loop;
    end Add_Nonreturning;
 
    -------------------
@@ -579,10 +575,6 @@ package body Flow_Generated_Globals.Partial is
                             Contracts   :        Entity_Contract_Maps.Map;
                             Call_Graph  : in out Call_Graphs.Graph)
    is
-      procedure Add_Subtree is new
-        Fold2 (Entity_Contract_Maps.Map, Call_Graphs.Graph, Add_Recursive);
-      --  Recursively call the current procedure for all the nested entities
-
    begin
       if Is_Callee (E) then
          Call_Graph.Include_Vertex (E);
@@ -596,7 +588,9 @@ package body Flow_Generated_Globals.Partial is
          end loop;
       end if;
 
-      Add_Subtree (E, Contracts, Call_Graph);
+      for Child of Scope_Map (E) loop
+         Add_Recursive (Child, Contracts, Call_Graph);
+      end loop;
    end Add_Recursive;
 
    -------------
@@ -607,17 +601,8 @@ package body Flow_Generated_Globals.Partial is
      (Analyzed  :        Entity_Id;
       Contracts : in out Entity_Contract_Maps.Map)
    is
-
-      procedure Analyze_Subtree is new
-        Fold1 (Entity_Contract_Maps.Map, Analyze);
-      --  Analyze entities nested in the current one
-
-      --  Local variables
-
       Contr : Contract;
       --  Contract for the analyzed entity
-
-   --  Start of processing for Analyze
 
    begin
       case Ekind (Analyzed) is
@@ -657,7 +642,9 @@ package body Flow_Generated_Globals.Partial is
       if Analyzed = Root_Entity
         or else not Is_Leaf (Analyzed)
       then
-         Analyze_Subtree (Analyzed, Contracts);
+         for Child of Scope_Map (Analyzed) loop
+            Analyze (Child, Contracts);
+         end loop;
 
          declare
             Global_Graph : Global_Graphs.Graph := Global_Graphs.Create;
@@ -1061,8 +1048,6 @@ package body Flow_Generated_Globals.Partial is
          procedure Dump (Label : String; G : Global_Nodes);
          --  Display globals, if any
 
-         procedure Dump_Subtree is new Fold0 (Dump);
-
          ----------
          -- Dump --
          ----------
@@ -1087,7 +1072,9 @@ package body Flow_Generated_Globals.Partial is
       --  Start of processing for Dump
 
       begin
-         Dump_Subtree (E);
+         for Child of Scope_Map (E) loop
+            Dump (Child);
+         end loop;
 
          if Entity_Contract_Maps.Has_Element (C) then
             declare
@@ -1253,9 +1240,6 @@ package body Flow_Generated_Globals.Partial is
          Global_Graph : Global_Graphs.Graph)
          return Global_Nodes
       with Pre => Is_Caller_Entity (E);
-
-      procedure Fold_Subtree is new
-        Fold3 (Entity_Id, Global_Graphs.Graph, Entity_Contract_Maps.Map, Fold);
 
       function Is_Fully_Written
         (State   : Entity_Id;
@@ -1649,16 +1633,15 @@ package body Flow_Generated_Globals.Partial is
 
       Filter_Local (Analyzed, Contr.Remote_Calls);
 
-      Fold_Subtree (Folded, Analyzed, Global_Graph, Contracts);
+      for Child of Scope_Map (Folded) loop
+         Fold (Child, Analyzed, Global_Graph, Contracts);
+      end loop;
    end Fold;
 
    procedure Fold_Nonreturning (Folded     :        Entity_Id;
                                 Call_Graph :        Call_Graphs.Graph;
                                 Contracts  : in out Entity_Contract_Maps.Map)
    is
-      procedure Fold_Subtree is new
-        Fold2 (Call_Graphs.Graph, Entity_Contract_Maps.Map, Fold_Nonreturning);
-
    begin
       if Is_Proper_Callee (Folded) then
 --        Contracts (Folded).Nonreturning :=
@@ -1689,23 +1672,24 @@ package body Flow_Generated_Globals.Partial is
          Contracts (Folded).Nonreturning := Meaningless;
       end if;
 
-      Fold_Subtree (Folded, Call_Graph, Contracts);
+      for Child of Scope_Map (Folded) loop
+         Fold_Nonreturning (Child, Call_Graph, Contracts);
+      end loop;
    end Fold_Nonreturning;
 
    procedure Fold_Recursive (Folded     :        Entity_Id;
                              Call_Graph :        Call_Graphs.Graph;
                              Contracts  : in out Entity_Contract_Maps.Map)
    is
-      procedure Fold_Subtree is new
-        Fold2 (Call_Graphs.Graph, Entity_Contract_Maps.Map, Fold_Recursive);
-
    begin
       Contracts (Folded).Recursive :=
         (if Is_Proper_Callee (Folded)
          then Call_Graph.Edge_Exists (Folded, Folded)
          else Meaningless);
 
-      Fold_Subtree (Folded, Call_Graph, Contracts);
+      for Child of Scope_Map (Folded) loop
+         Fold_Recursive (Child, Call_Graph, Contracts);
+      end loop;
    end Fold_Recursive;
 
    --------------------
@@ -2012,13 +1996,12 @@ package body Flow_Generated_Globals.Partial is
      (E :        Entity_Id;
       C : in out Entity_Contract_Maps.Map)
    is
-      procedure Write_Subtree_Contracts_To_ALI is new
-        Fold1 (Entity_Contract_Maps.Map, Write_Contracts_To_ALI);
-
       Contr : Contract renames C (E);
 
    begin
-      Write_Subtree_Contracts_To_ALI (E, C);
+      for Child of Scope_Map (E) loop
+         Write_Contracts_To_ALI (Child, C);
+      end loop;
 
       if Ekind (E) /= E_Protected_Type then
          GG_Register_Direct_Calls (E, Contr.Direct_Calls);

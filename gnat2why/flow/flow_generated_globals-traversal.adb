@@ -22,36 +22,14 @@
 ------------------------------------------------------------------------------
 
 with Ada.Text_IO;
-with Ada.Containers.Hashed_Maps;
-with Nlists;           use Nlists;
-with Sem_Util;         use Sem_Util;
-with Sinfo;            use Sinfo;
---  with SPARK_Util;       use SPARK_Util;
-with SPARK_Definition; use SPARK_Definition;
+with Nlists;                     use Nlists;
+with Sem_Util;                   use Sem_Util;
+with Sinfo;                      use Sinfo;
+with SPARK_Definition;           use SPARK_Definition;
 
 package body Flow_Generated_Globals.Traversal is
 
    Debug : constant Boolean := False;
-
-   type Nested is record
-      Subprograms : Node_Lists.List;
-      Packages    : Node_Lists.List;
-      Parent      : Entity_Id;
-   end record;
-
-   package Nested_Scopes is new
-     Ada.Containers.Hashed_Maps (Key_Type        => Entity_Id,
-                                 Element_Type    => Nested,
-                                 Hash            => Node_Hash,
-                                 Equivalent_Keys => "=",
-                                 "="             => "=");
-
-   Scope_Map : Nested_Scopes.Map;
-   --  Hierarchical container with entities processed by the flow analysis,
-   --  i.e. functions, procedures, entries (collectively known as subprograms)
-   --  and packages, protected types and task types (collectively known as
-   --  packages, sic). The hierarchy of its contents mirrors the hierarchy
-   --  of the analyzed code.
 
    Root : Entity_Id := Empty;
 
@@ -188,15 +166,15 @@ package body Flow_Generated_Globals.Traversal is
 
       procedure Dump (E : Entity_Id);
 
-      procedure Dump_Children is new Fold0 (Dump);
-
       ----------
       -- Dump --
       ----------
 
       procedure Dump (E : Entity_Id) is
       begin
-         Dump_Children (E);
+         for Childred of Scope_Map (E) loop
+            Dump (E);
+         end loop;
          Ada.Text_IO.Put_Line ("***" & Unique_Name (E));
       end Dump;
 
@@ -219,103 +197,6 @@ package body Flow_Generated_Globals.Traversal is
         and then Scope_Map (C).Subprograms.Is_Empty;
    end Is_Leaf;
 
-   -----------
-   -- Fold0 --
-   -----------
-
-   procedure Fold0 (E : Entity_Id) is
-      N : Nested renames Scope_Map (E);
-   begin
-      for P of N.Packages loop
-         Process (P);
-      end loop;
-
-      for S of N.Subprograms loop
-         Process (S);
-      end loop;
-   end Fold0;
-
-   -----------
-   -- Fold1 --
-   -----------
-
-   procedure Fold1 (E : Entity_Id; Ctx : in out Context) is
-
-      procedure Wrapper (E : Entity_Id);
-
-      -------------
-      -- Wrapper --
-      -------------
-
-      procedure Wrapper (E : Entity_Id) is
-      begin
-         Process (E, Ctx);
-      end Wrapper;
-
-      procedure Fold is new Fold0 (Wrapper);
-
-   --  Start of processing for Fold1
-
-   begin
-      Fold (E);
-   end Fold1;
-
-   -----------
-   -- Fold2 --
-   -----------
-
-   procedure Fold2 (E    :        Entity_Id;
-                    Ctx1 :        Context1;
-                    Ctx2 : in out Context2)
-   is
-
-      procedure Wrapper (E : Entity_Id);
-
-      -------------
-      -- Wrapper --
-      -------------
-
-      procedure Wrapper (E : Entity_Id) is
-      begin
-         Process (E, Ctx1, Ctx2);
-      end Wrapper;
-
-      procedure Fold is new Fold0 (Wrapper);
-
-   --  Start of processing for Fold2
-
-   begin
-      Fold (E);
-   end Fold2;
-
-   -----------
-   -- Fold3 --
-   -----------
-
-   procedure Fold3 (E    :        Entity_Id;
-                    Ctx1 :        Context1;
-                    Ctx2 :        Context2;
-                    Ctx3 : in out Context3)
-   is
-      procedure Wrapper (E : Entity_Id);
-
-      -------------
-      -- Wrapper --
-      -------------
-
-      procedure Wrapper (E : Entity_Id) is
-      begin
-         Process (E, Ctx1, Ctx2, Ctx3);
-      end Wrapper;
-
-      procedure Fold is new Fold0 (Wrapper);
-
-   --  Start of processing for Fold3
-
-   begin
-      Fold (E);
-   end Fold3;
-
    -----------------------
    -- Iterate_Main_Unit --
    -----------------------
@@ -326,15 +207,15 @@ package body Flow_Generated_Globals.Traversal is
 
       procedure Wrapper (E : Entity_Id);
 
-      procedure Iterate_All_Children is new Fold0 (Wrapper);
-
       -------------
       -- Wrapper --
       -------------
 
       procedure Wrapper (E : Entity_Id) is
       begin
-         Iterate_All_Children (E);
+         for Child of Scope_Map (E) loop
+            Wrapper (Child);
+         end loop;
 
          Process (E);
       end Wrapper;

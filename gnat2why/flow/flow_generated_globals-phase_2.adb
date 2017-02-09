@@ -1993,13 +1993,10 @@ package body Flow_Generated_Globals.Phase_2 is
          -------------
 
          procedure Analyze (Analyzed : Entity_Id) is
-
-            procedure Analyze_Subtree is new Fold0 (Analyze);
-
-         --  Start of processing for Analyze
-
          begin
-            Analyze_Subtree (Analyzed);
+            for Child of Scope_Map (Analyzed) loop
+               Analyze (Child);
+            end loop;
 
             --  ??? for now ignore protected types
             if Ekind (Analyzed) = E_Protected_Type then
@@ -2141,13 +2138,8 @@ package body Flow_Generated_Globals.Phase_2 is
 
          procedure Collect_Remote_Calls (E : Entity_Id) is
 
-            procedure Collect_Remote_Calls_From_Subtree is new
-              Fold0 (Collect_Remote_Calls);
-
             Caller : constant Entity_Name_Graphs.Vertex_Id :=
               Subprogram_Call_Graph.Get_Vertex (To_Entity_Name (E));
-
-         --  Start of processing for Collect_Remote_Calls
 
          begin
             if Caller /= Entity_Name_Graphs.Null_Vertex then
@@ -2180,7 +2172,9 @@ package body Flow_Generated_Globals.Phase_2 is
                         raise Program_Error);
             end if;
 
-            Collect_Remote_Calls_From_Subtree (E);
+            for Child of Scope_Map (E) loop
+               Collect_Remote_Calls (Child);
+            end loop;
          end Collect_Remote_Calls;
 
          -----------
