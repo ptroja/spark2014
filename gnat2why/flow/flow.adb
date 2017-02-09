@@ -1173,18 +1173,12 @@ package body Flow is
 
       procedure Build_Graphs_For_Entity (E : Entity_Id) is
 
-         procedure Build_Graphs_For_Subtree is new
-           Fold0 (Build_Graphs_For_Entity);
-
-         --  Local variables
-
          Graph_Start : Entity_Id := Empty;
          --  Graph entry point, if any
-
-      --  Start of processing for Build_Graphs_For_Entity
-
       begin
-         Build_Graphs_For_Subtree (E);
+         for Child of Scope_Map (E) loop
+            Build_Graphs_For_Entity (Child);
+         end loop;
 
          case Ekind (E) is
             when Entry_Kind | E_Function | E_Procedure | E_Task_Type =>
