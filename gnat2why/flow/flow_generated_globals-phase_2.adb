@@ -35,6 +35,7 @@ with Output;                     use Output;
 with Sem_Util;                   use Sem_Util;
 with Snames;                     use Snames;
 
+with Checked_Types;              use Checked_Types;
 with Call;                       use Call;
 with Debug.Timing;               use Debug.Timing;
 with Gnat2Why.Annotate;          use Gnat2Why.Annotate;
@@ -2323,6 +2324,12 @@ package body Flow_Generated_Globals.Phase_2 is
 
          procedure Fold (G : Global_Graphs.Graph; Folded : Entity_Name) is
 
+            Folded_Entity : constant Checked_Entity_Id :=
+              Find_Entity (Folded);
+
+            Folded_Scope : constant Flow_Scope :=
+              Get_Flow_Scope (Folded_Entity);
+
             procedure Collect
               (Kind :     Vertex_Kind;
                Vars : out Name_Sets.Set);
@@ -2449,7 +2456,11 @@ package body Flow_Generated_Globals.Phase_2 is
                Partial.Clear;
 
                for Var of Vars loop
-                  if Is_Heap_Variable (Var) then
+                  if Is_Heap_Variable (Var)
+                    or else (Present (Find_Entity (Var))
+                             and then Is_Visible (Find_Entity (Var),
+                                                  Folded_Scope))
+                  then
                      Projected.Include (Var);
                   else
                      declare
@@ -2460,6 +2471,7 @@ package body Flow_Generated_Globals.Phase_2 is
                            declare
                               State : constant Entity_Name :=
                                 Comp_State_Map (S);
+                              --  Encapsulating state of a variable
 
                            begin
                               if Scope_Within_Or_Same (Scope (Folded),
