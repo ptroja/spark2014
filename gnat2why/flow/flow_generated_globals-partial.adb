@@ -1249,7 +1249,7 @@ package body Flow_Generated_Globals.Partial is
       --  Returns True iff all constituents of State are among Outputs
 
       procedure Up_Project
-        (Vars      : Node_Sets.Set;
+        (Vars      :     Node_Sets.Set;
          Projected : out Node_Sets.Set;
          Partial   : out Node_Sets.Set)
         with Post =>
@@ -1344,7 +1344,7 @@ package body Flow_Generated_Globals.Partial is
       ----------------
 
       procedure Up_Project
-        (Vars      : Node_Sets.Set;
+        (Vars      :     Node_Sets.Set;
          Projected : out Node_Sets.Set;
          Partial   : out Node_Sets.Set)
       is
