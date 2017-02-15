@@ -23,6 +23,7 @@
 
 with Ada.Containers.Doubly_Linked_Lists;
 
+with Lib;                    use Lib;
 with Nlists;                 use Nlists;
 with Output;                 use Output;
 with Sem_Aux;                use Sem_Aux;
@@ -176,7 +177,18 @@ package body Flow_Refinement is
    -------------------------
 
    function Is_Globally_Visible (N : Node_Id) return Boolean is
-      (Is_Visible (N, Null_Flow_Scope));
+
+      Looking_Scop : constant Flow_Scope :=
+        (if Is_Child_Unit (Main_Unit_Entity)
+         then Get_Flow_Scope (Main_Unit_Entity)
+         else Null_Flow_Scope);
+      --  External scope for deciding "global" visibility of N
+      --  ??? needs more testing for nodes in child units, e.g. bodies of child
+      --  subprograms
+
+   begin
+      return Is_Visible (N, Looking_Scop);
+   end Is_Globally_Visible;
 
    ------------------------------
    -- Get_Enclosing_Flow_Scope --
