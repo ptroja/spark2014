@@ -1203,7 +1203,8 @@ package body Flow_Generated_Globals.Partial is
          --  as a global when E is a single concurrent type). Heap is never a
          --  local variable, so it must be always kept while filtering.
          if Is_Heap_Entity (N)
-           or else not Scope_Within_Or_Same (N, E)
+           or else not (Is_In_Analyzed_Files (N)
+                        and then Scope_Within_Or_Same (N, E))
          then
             Remote.Insert (N);
          end if;
