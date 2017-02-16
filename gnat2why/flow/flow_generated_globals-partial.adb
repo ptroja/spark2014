@@ -1425,7 +1425,8 @@ package body Flow_Generated_Globals.Partial is
                     Collect (Definite_Call, Global_Graph);
                begin
                   Contr.Initializes.Union
-                    ((G.Outputs - G.Inputs) and Contr.Local_Variables);
+                    ((G.Outputs - G.Inputs) and (Contr.Local_Variables or
+                                                 Contr.Local_Ghost_Variables));
                end;
             end loop;
 
