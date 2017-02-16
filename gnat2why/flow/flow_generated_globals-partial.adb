@@ -1639,6 +1639,10 @@ package body Flow_Generated_Globals.Partial is
       end loop;
    end Fold;
 
+   -----------------------
+   -- Fold_Nonreturning --
+   -----------------------
+
    procedure Fold_Nonreturning (Folded     :        Entity_Id;
                                 Call_Graph :        Call_Graphs.Graph;
                                 Contracts  : in out Entity_Contract_Maps.Map)
@@ -1677,6 +1681,10 @@ package body Flow_Generated_Globals.Partial is
          Fold_Nonreturning (Child, Call_Graph, Contracts);
       end loop;
    end Fold_Nonreturning;
+
+   --------------------
+   -- Fold_Recursive --
+   --------------------
 
    procedure Fold_Recursive (Folded     :        Entity_Id;
                              Call_Graph :        Call_Graphs.Graph;
