@@ -291,6 +291,19 @@ package body Flow_Generated_Globals.Partial is
                                   G      : Global_Graphs.Graph);
    --  Debug output
 
+   procedure Recategorize_Calls
+     (Contracts :        Entity_Contract_Maps.Map;
+      Contr     : in out Contract)
+   with Post => Contr.Proof_Calls.Intersection
+                  (Contr.Conditional_Calls).Is_Empty and then
+                Contr.Proof_Calls.Intersection
+                  (Contr.Definite_Calls).Is_Empty and then
+                Contr.Conditional_Calls.Intersection
+                  (Contr.Definite_Calls).Is_Empty;
+   --  Recategorize calls into proof, conditional and definite; called when
+   --  resolving calls within the analyzed scope.
+   --  ??? rewrite Post using Disjoint (x, y, z)
+
    procedure To_Node_Set
      (Names :     Name_Sets.Set;
       Nodes : out Node_Sets.Set);
@@ -1377,9 +1390,6 @@ package body Flow_Generated_Globals.Partial is
          end loop;
       end Up_Project;
 
-      --  Local variables
-      RProof, RConditional, RDefinite : Node_Sets.Set;
-
    --  Start of processing for Fold
 
    begin
@@ -1430,203 +1440,7 @@ package body Flow_Generated_Globals.Partial is
          end if;
       end;
 
-      --  Categorize calls: PROOF CALLS
-
-      declare
-         type Calls is record
-            Proof, Other : Node_Sets.Set;
-         end record;
-
-         Todo : Calls := (Proof => Contr.Proof_Calls,
-                          Other => Contr.Conditional_Calls or
-                                   Contr.Definite_Calls);
-
-         Done : Calls;
-
-      begin
-         loop
-            if not Todo.Proof.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Proof.First_Element;
-
-                  Inserted : Boolean;
-                  Unused   : Node_Sets.Cursor;
-                  C        : Entity_Contract_Maps.Cursor;
-
-               begin
-                  Done.Proof.Insert (New_Item  => Pick,
-                                     Position  => Unused,
-                                     Inserted  => Inserted);
-
-                  if Inserted then
-                     C := Contracts.Find (Pick);
-                     if Entity_Contract_Maps.Has_Element (C) then
-
-                        Todo.Proof.Union
-                          ((Contracts (C).Proof_Calls or
-                            Contracts (C).Conditional_Calls or
-                            Contracts (C).Definite_Calls)
-                           - Done.Proof);
-                     end if;
-                  end if;
-
-                  Todo.Proof.Delete (Pick);
-               end;
-            elsif not Todo.Other.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Other.First_Element;
-
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-               begin
-                  Done.Other.Insert (Pick);
-
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Proof.Union (Contracts (C).Proof_Calls -
-                                       Done.Proof);
-
-                     Todo.Other.Union ((Contracts (C).Conditional_Calls or
-                                        Contracts (C).Definite_Calls)
-                                       - Done.Other);
-                  end if;
-
-                  Todo.Other.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert (Contr.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
-
-         RProof := Done.Proof;
-      end;
-
-      --  Categorize calls: CONDITIONAL CALLS
-
-      declare
-         type Calls is record
-            Conditional, Definite : Node_Sets.Set;
-         end record;
-
-         Todo : Calls := (Contr.Conditional_Calls,
-                          Contr.Definite_Calls);
-
-         Done : Calls;
-
-      begin
-         loop
-            if not Todo.Conditional.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Conditional.First_Element;
-
-                  Inserted : Boolean;
-                  Unused   : Node_Sets.Cursor;
-                  C        : Entity_Contract_Maps.Cursor;
-
-               begin
-                  Done.Conditional.Insert (New_Item  => Pick,
-                                           Position  => Unused,
-                                           Inserted  => Inserted);
-
-                  if Inserted then
-                     C := Contracts.Find (Pick);
-                     if Entity_Contract_Maps.Has_Element (C) then
-
-                        Todo.Conditional.Union
-                          ((Contracts (C).Conditional_Calls or
-                            Contracts (C).Definite_Calls)
-                           - Done.Conditional);
-                     end if;
-                  end if;
-
-                  Todo.Conditional.Delete (Pick);
-               end;
-            elsif not Todo.Definite.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Definite.First_Element;
-
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-               begin
-                  Done.Definite.Insert (Pick);
-
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Conditional.Union (Contracts (C).Conditional_Calls -
-                                             Done.Conditional);
-
-                     Todo.Definite.Union (Contracts (C).Definite_Calls -
-                                          Done.Definite);
-                  end if;
-
-                  Todo.Definite.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert
-           (Contr.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
-
-         RConditional := Done.Conditional;
-      end;
-
-      --  Categorize calls: Definite CALLS
-
-      declare
-         Todo : Node_Sets.Set := Contr.Definite_Calls;
-         Done : Node_Sets.Set;
-
-      begin
-         loop
-            if not Todo.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.First_Element;
-
-                  Inserted : Boolean;
-                  Unused   : Node_Sets.Cursor;
-                  C        : Entity_Contract_Maps.Cursor;
-
-               begin
-                  Done.Insert (New_Item  => Pick,
-                               Position  => Unused,
-                               Inserted  => Inserted);
-
-                  if Inserted then
-                     C := Contracts.Find (Pick);
-                     if Entity_Contract_Maps.Has_Element (C) then
-
-                        Todo.Union (Contracts (C).Definite_Calls - Done);
-                     end if;
-                  end if;
-
-                  Todo.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert
-           (Contr.Definite_Calls.Is_Subset (Of_Set => Done));
-
-         RDefinite := Done;
-      end;
-
-      RProof.Difference (RConditional);
-      RProof.Difference (RDefinite);
-
-      RConditional.Difference (RDefinite);
-
-      --  ??? should be disjoint, enforce it
-      pragma Assert (RProof.Intersection (RConditional).Is_Empty);
-      pragma Assert (RConditional.Intersection (RDefinite).Is_Empty);
-      pragma Assert (RProof.Intersection (RDefinite).Is_Empty);
-
-      Contr.Proof_Calls       := RProof;
-      Contr.Conditional_Calls := RConditional;
-      Contr.Definite_Calls    := RDefinite;
+      Recategorize_Calls (Contracts, Contr);
 
       Filter_Local (Analyzed, Contr.Proof_Calls);
       Filter_Local (Analyzed, Contr.Definite_Calls);
@@ -1931,6 +1745,217 @@ package body Flow_Generated_Globals.Partial is
             Edge_Info => EDI'Access);
       end if;
    end Print_Partial_Graph;
+
+   ------------------------
+   -- Recategorize_Calls --
+   ------------------------
+
+   procedure Recategorize_Calls
+     (Contracts :        Entity_Contract_Maps.Map;
+      Contr     : in out Contract)
+   is
+      use type Node_Sets.Set;
+
+      RProof, RConditional, RDefinite : Node_Sets.Set;
+   begin
+      --  Categorize calls: PROOF CALLS
+
+      declare
+         type Calls is record
+            Proof, Other : Node_Sets.Set;
+         end record;
+
+         Todo : Calls := (Proof => Contr.Proof_Calls,
+                          Other => Contr.Conditional_Calls or
+                                   Contr.Definite_Calls);
+
+         Done : Calls;
+
+      begin
+         loop
+            if not Todo.Proof.Is_Empty then
+               declare
+                  Pick : constant Entity_Id := Todo.Proof.First_Element;
+
+                  Inserted : Boolean;
+                  Unused   : Node_Sets.Cursor;
+                  C        : Entity_Contract_Maps.Cursor;
+
+               begin
+                  Done.Proof.Insert (New_Item  => Pick,
+                                     Position  => Unused,
+                                     Inserted  => Inserted);
+
+                  if Inserted then
+                     C := Contracts.Find (Pick);
+                     if Entity_Contract_Maps.Has_Element (C) then
+
+                        Todo.Proof.Union
+                          ((Contracts (C).Proof_Calls or
+                            Contracts (C).Conditional_Calls or
+                            Contracts (C).Definite_Calls)
+                           - Done.Proof);
+                     end if;
+                  end if;
+
+                  Todo.Proof.Delete (Pick);
+               end;
+            elsif not Todo.Other.Is_Empty then
+               declare
+                  Pick : constant Entity_Id := Todo.Other.First_Element;
+
+                  C : constant Entity_Contract_Maps.Cursor :=
+                    Contracts.Find (Pick);
+               begin
+                  Done.Other.Insert (Pick);
+
+                  if Entity_Contract_Maps.Has_Element (C) then
+                     Todo.Proof.Union (Contracts (C).Proof_Calls -
+                                       Done.Proof);
+
+                     Todo.Other.Union ((Contracts (C).Conditional_Calls or
+                                        Contracts (C).Definite_Calls)
+                                       - Done.Other);
+                  end if;
+
+                  Todo.Other.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert (Contr.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
+
+         RProof := Done.Proof;
+      end;
+
+      --  Categorize calls: CONDITIONAL CALLS
+
+      declare
+         type Calls is record
+            Conditional, Definite : Node_Sets.Set;
+         end record;
+
+         Todo : Calls := (Contr.Conditional_Calls,
+                          Contr.Definite_Calls);
+
+         Done : Calls;
+
+      begin
+         loop
+            if not Todo.Conditional.Is_Empty then
+               declare
+                  Pick : constant Entity_Id := Todo.Conditional.First_Element;
+
+                  Inserted : Boolean;
+                  Unused   : Node_Sets.Cursor;
+                  C        : Entity_Contract_Maps.Cursor;
+
+               begin
+                  Done.Conditional.Insert (New_Item  => Pick,
+                                           Position  => Unused,
+                                           Inserted  => Inserted);
+
+                  if Inserted then
+                     C := Contracts.Find (Pick);
+                     if Entity_Contract_Maps.Has_Element (C) then
+
+                        Todo.Conditional.Union
+                          ((Contracts (C).Conditional_Calls or
+                            Contracts (C).Definite_Calls)
+                           - Done.Conditional);
+                     end if;
+                  end if;
+
+                  Todo.Conditional.Delete (Pick);
+               end;
+            elsif not Todo.Definite.Is_Empty then
+               declare
+                  Pick : constant Entity_Id := Todo.Definite.First_Element;
+
+                  C : constant Entity_Contract_Maps.Cursor :=
+                    Contracts.Find (Pick);
+               begin
+                  Done.Definite.Insert (Pick);
+
+                  if Entity_Contract_Maps.Has_Element (C) then
+                     Todo.Conditional.Union (Contracts (C).Conditional_Calls -
+                                             Done.Conditional);
+
+                     Todo.Definite.Union (Contracts (C).Definite_Calls -
+                                          Done.Definite);
+                  end if;
+
+                  Todo.Definite.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert
+           (Contr.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
+
+         RConditional := Done.Conditional;
+      end;
+
+      --  Categorize calls: Definite CALLS
+
+      declare
+         Todo : Node_Sets.Set := Contr.Definite_Calls;
+         Done : Node_Sets.Set;
+
+      begin
+         loop
+            if not Todo.Is_Empty then
+               declare
+                  Pick : constant Entity_Id := Todo.First_Element;
+
+                  Inserted : Boolean;
+                  Unused   : Node_Sets.Cursor;
+                  C        : Entity_Contract_Maps.Cursor;
+
+               begin
+                  Done.Insert (New_Item  => Pick,
+                               Position  => Unused,
+                               Inserted  => Inserted);
+
+                  if Inserted then
+                     C := Contracts.Find (Pick);
+                     if Entity_Contract_Maps.Has_Element (C) then
+
+                        Todo.Union (Contracts (C).Definite_Calls - Done);
+                     end if;
+                  end if;
+
+                  Todo.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert
+           (Contr.Definite_Calls.Is_Subset (Of_Set => Done));
+
+         RDefinite := Done;
+      end;
+
+      RProof.Difference (RConditional);
+      RProof.Difference (RDefinite);
+
+      RConditional.Difference (RDefinite);
+
+      Node_Sets.Move (Target => Contr.Proof_Calls,
+                      Source => RProof);
+
+      Node_Sets.Move (Target => Contr.Conditional_Calls,
+                      Source => RConditional);
+
+      Node_Sets.Move (Target => Contr.Definite_Calls,
+                      Source => RDefinite);
+   end Recategorize_Calls;
 
    --------------
    -- To_Names --
