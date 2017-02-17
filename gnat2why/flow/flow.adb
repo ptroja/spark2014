@@ -1114,27 +1114,6 @@ package body Flow is
       --  (using control-flow traversal) and register the results.
       Control_Flow_Graph.Create (FA);
 
-      --  Note if this is a subprogram with no effects; needed only in phase 2
-      --  to disable some checks.
-      if not FA.Generating_Globals then
-         case FA.Kind is
-            when Kind_Subprogram =>
-               FA.No_Effects :=
-                 (for all F of FA.All_Vars =>
-                     not FA.Atr (FA.CFG.Get_Vertex
-                                 (Change_Variant (F, Final_Value))).Is_Export);
-
-            when Kind_Task =>
-               FA.No_Effects := False;
-
-            --  Otherwise No_Effects is not part of discriminated record, do
-            --  not touch it.
-
-            when others =>
-               null;
-         end case;
-      end if;
-
       --  Print this graph now in case the other algorithms barf
       Debug (Debug_Print_CFG, FA.CFG, "cfg");
 
@@ -1240,6 +1219,26 @@ package body Flow is
    procedure Flow_Analyse_CUnit (GNAT_Root : Node_Id) is
       Success : Boolean;
       Unused  : Partial_Contract_Lists.List;
+
+      function Has_Effects (FA : Flow_Analysis_Graphs) return Boolean
+        with Pre => FA.Kind in Kind_Subprogram | Kind_Task;
+      --  Returns True iff FA represents a task or a subprogram with effects.
+      --  Certain analysis are only enabled if this is the case; otherwise we
+      --  would spam the user with error messages for almost every statement.
+
+      -----------------
+      -- Has_Effects --
+      -----------------
+
+      function Has_Effects (FA : Flow_Analysis_Graphs) return Boolean is
+        (FA.Kind = Kind_Task
+           or else
+         (for some F of FA.All_Vars =>
+             FA.Atr (FA.CFG.Get_Vertex
+                        (Change_Variant (F, Final_Value))).Is_Export));
+
+   --  Start of processing for Flow_Analyse_CUnit
+
    begin
 
       --  Check that classwide contracts conform to the legality rules laid
@@ -1297,7 +1296,12 @@ package body Flow is
                   --  aspects.
                   if not Gnat2Why_Args.Prove_Mode then
                      Analysis.Find_Unwritten_Exports (FA);
-                     if FA.No_Effects then
+
+                     if Has_Effects (FA) then
+                        Analysis.Find_Ineffective_Imports_And_Unused_Objects
+                          (FA);
+                        Analysis.Find_Ineffective_Statements (FA);
+                     else
                         if not FA.Is_Main
                           and then not Is_Error_Signaling_Procedure
                                          (FA.Analyzed_Entity)
@@ -1314,10 +1318,6 @@ package body Flow is
                               Tag      => Ineffective,
                               Severity => Warning_Kind);
                         end if;
-                     else
-                        Analysis.Find_Ineffective_Imports_And_Unused_Objects
-                          (FA);
-                        Analysis.Find_Ineffective_Statements (FA);
                      end if;
                      Analysis.Find_Dead_Code (FA);
                      Analysis.Check_Depends_Contract (FA);
