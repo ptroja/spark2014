@@ -3082,8 +3082,7 @@ package body Flow.Analysis is
             while Present (Hidden_State) loop
                F := Direct_Mapping_Id (Hidden_State);
 
-               if Ekind (Hidden_State) in Object_Kind
-                 and then Is_Constant_Object (Hidden_State)
+               if Is_Constant_Object (Hidden_State)
                  and then Has_Variable_Input (Hidden_State)
                  and then not All_Constituents.Contains (F)
                then
@@ -4753,7 +4752,7 @@ package body Flow.Analysis is
 
       Visible_Vars : Flow_Id_Sets.Set;
 
-      procedure Visitor (V  : Vertex_Id;
+      procedure Visitor (V  :     Vertex_Id;
                          TV : out Simple_Traversal_Instruction);
       --  Emit a high check for all publically visible variables modified
       --  at this vertex.
@@ -4762,38 +4761,34 @@ package body Flow.Analysis is
       -- Visitor --
       -------------
 
-      procedure Visitor (V  : Vertex_Id;
+      procedure Visitor (V  :     Vertex_Id;
                          TV : out Simple_Traversal_Instruction)
       is
-         K : constant Flow_Id := FA.PDG.Get_Key (V);
+         K : Flow_Id renames FA.PDG.Get_Key (V);
+
       begin
          TV := Continue;
 
-         if not Present (K) then
-            return;
-         end if;
-
          --  Only check nodes in the body
-         if K.Kind in Direct_Mapping | Record_Field and then
-           Get_Flow_Scope (K.Node).Part in Visible_Part | Private_Part
+         if Present (K)
+           and then K.Kind in Direct_Mapping | Record_Field
+           and then Get_Flow_Scope (K.Node).Part = Body_Part
          then
-            return;
+            for Var of Visible_Vars loop
+               if FA.Atr (V).Variables_Defined.Contains (Var) then
+                  Error_Msg_Flow
+                    (FA       => FA,
+                     Msg      => "modification of & in elaboration " &
+                                 "requires Elaborate_Body on package &",
+                     Severity => High_Check_Kind,
+                     N        => Error_Location (FA.PDG, FA.Atr, V),
+                     F1       => Var,
+                     F2       => Direct_Mapping_Id (FA.Spec_Entity),
+                     Tag      => Pragma_Elaborate_Body_Needed,
+                     Vertex   => V);
+               end if;
+            end loop;
          end if;
-
-         for Var of Visible_Vars loop
-            if FA.Atr (V).Variables_Defined.Contains (Var) then
-               Error_Msg_Flow
-                 (FA       => FA,
-                  Msg      => "modification of & in elaboration requires " &
-                    "Elaborate_Body on package &",
-                  Severity => High_Check_Kind,
-                  N        => Error_Location (FA.PDG, FA.Atr, V),
-                  F1       => Var,
-                  F2       => Direct_Mapping_Id (FA.Spec_Entity),
-                  Tag      => Pragma_Elaborate_Body_Needed,
-                  Vertex   => V);
-            end if;
-         end loop;
       end Visitor;
 
    --  Start of processing for Check_Elaborate_Body
@@ -4855,11 +4850,12 @@ package body Flow.Analysis is
          while Flow_Id_Sets.Has_Element (C) loop
             declare
                Var : Flow_Id renames FA.Spec_Vars (C);
+               Obj : constant Entity_Id := Get_Direct_Mapping_Id (Var);
             begin
                --  Ignore loop variables, in parameters and constants that are
                --  part of our local context.
-               if not Is_Constant (Var)
-                 and then Is_Initialized_At_Elaboration (Var, FA.S_Scope)
+               if not Is_Constant_Object (Obj)
+                 and then Is_Initialized_At_Elaboration (Obj, FA.S_Scope)
                then
                   Visible_Vars.Insert (Var);
                end if;
