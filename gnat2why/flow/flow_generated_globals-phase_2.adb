@@ -35,7 +35,6 @@ with Output;                     use Output;
 with Sem_Util;                   use Sem_Util;
 with Snames;                     use Snames;
 
-with Checked_Types;              use Checked_Types;
 with Call;                       use Call;
 with Debug.Timing;               use Debug.Timing;
 with Gnat2Why.Annotate;          use Gnat2Why.Annotate;
@@ -326,6 +325,13 @@ package body Flow_Generated_Globals.Phase_2 is
 
    Phase_1_Info : Phase_1_Info_Maps.Map;
    --  Information read from ALI files
+
+   Remote_Packages : Name_Sets.Set;
+   --  Visible packages from other compilation units whose Initializes aspect
+   --  decides which variables are safe to be used from the current compilation
+   --  unit.
+   --  ??? we should just trust in the Initializes aspect given by the user
+   --  and not re-generate it.
 
    function GG_Encapsulating_State (EN : Entity_Name) return Any_Entity_Name;
    --  Returns the Entity_Name of the directly encapsulating state. If one does
@@ -804,11 +810,6 @@ package body Flow_Generated_Globals.Phase_2 is
       --  Creates edges for (conditional and unconditional) subprogram calls in
       --  the tasking-related call graphs.
 
-      procedure Generate_Initializes_Aspects;
-      --  Once the global graph has been generated, we use it to generate the
-      --  Initializes aspects. We also take this opportunity to populate the
-      --  Package_To_Locals_Map.
-
       procedure Load_GG_Info_From_ALI
         (ALI_File_Name     : File_Name_Type;
          For_Current_CUnit : Boolean);
@@ -1276,164 +1277,6 @@ package body Flow_Generated_Globals.Phase_2 is
          end Add_Ceiling_Priority_Edges;
       end Add_Edges;
 
-      ----------------------------------
-      -- Generate_Initializes_Aspects --
-      ----------------------------------
-
-      procedure Generate_Initializes_Aspects is
-      begin
-         for P of Package_Info_List loop
-            declare
-               II : Initializes_Info :=
-                 (LHS       => P.Local_Definite_Writes
-                               and P.Local_Variables,
-                  LHS_Proof => P.Local_Definite_Writes
-                               and P.Local_Ghost_Variables,
-                  RHS       => P.Proper.Inputs,
-                  RHS_Proof => P.Proper.Proof_Ins);
-               --  The new name dependency map for package P
-               --
-               --  LHS and LHS_Proof represent the left hand side of the
-               --  generated initializes aspect. RHS and RHS_Proof represent
-               --  the right hand side of the generated Initializes aspect;
-               --  they are initialized with package inputs and proof inputs,
-               --  respectively.
-
-               procedure GG_Get_Most_Refined_Globals
-                 (Caller      :     Entity_Name;
-                  Proof_Reads : out Name_Sets.Set;
-                  Reads       : out Name_Sets.Set;
-                  Writes      : out Name_Sets.Set);
-               --  Gets the most refined globals of a subprogram
-
-               ---------------------------------
-               -- GG_Get_Most_Refined_Globals --
-               ---------------------------------
-
-               procedure GG_Get_Most_Refined_Globals
-                 (Caller      :     Entity_Name;
-                  Proof_Reads : out Name_Sets.Set;
-                  Reads       : out Name_Sets.Set;
-                  Writes      : out Name_Sets.Set)
-               is
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Global_Contracts.Find (Caller);
-
-               begin
-                  --  ??? the following is weird, I know. But it is actually
-                  --  very close to the old GG code (where Initialized were
-                  --  quite broken anyway).
-
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     declare
-                        Refined : Globals renames Global_Contracts (C).Refined;
-
-                     begin
-                        Proof_Reads := Refined.Proof_Ins;
-                        Reads       := Refined.Inputs;
-                        Writes      := Refined.Outputs;
-                     end;
-                  end if;
-               end GG_Get_Most_Refined_Globals;
-
-            begin
-               --  Extend the LHSs with pure outputs (outputs that are not also
-               --  inputs) of definite calls that are local to the currently
-               --  analyzed package. Also, add Inputs and Proof_Ins of definite
-               --  calls to RHS and RHS_Proof respectively.
-               for Definite_Call of P.Definite_Calls loop
-                  if GG_Exists.Subprograms.Contains (Definite_Call) then
-                     declare
-                        Proof_Ins : Name_Sets.Set;
-                        Inputs    : Name_Sets.Set;
-                        Outputs   : Name_Sets.Set;
-
-                        Pure_Outputs : Name_Sets.Set;
-
-                     begin
-                        GG_Get_Most_Refined_Globals
-                          (Caller      => Definite_Call,
-                           Proof_Reads => Proof_Ins,
-                           Reads       => Inputs,
-                           Writes      => Outputs);
-
-                        Pure_Outputs := Outputs - Inputs;
-
-                        II.LHS_Proof.Union
-                          (Pure_Outputs and P.Local_Ghost_Variables);
-                        II.LHS.Union (Pure_Outputs and P.Local_Variables);
-
-                        II.RHS.Union (Inputs);
-                        II.RHS_Proof.Union (Proof_Ins);
-                     end;
-                  end if;
-               end loop;
-
-               --  Add Inputs and Outputs of conditional calls to the RHS and
-               --  their Proof_Ins to the RHS_Proof.
-               for Conditional_Call of P.Conditional_Calls loop
-                  if GG_Exists.Subprograms.Contains (Conditional_Call) then
-                     declare
-                        Proof_Ins : Name_Sets.Set;
-                        Inputs    : Name_Sets.Set;
-                        Outputs   : Name_Sets.Set;
-                     begin
-                        GG_Get_Most_Refined_Globals
-                          (Caller      => Conditional_Call,
-                           Proof_Reads => Proof_Ins,
-                           Reads       => Inputs,
-                           Writes      => Outputs);
-
-                        II.RHS_Proof.Union (Proof_Ins);
-                        II.RHS.Union (Inputs or Outputs);
-                     end;
-                  end if;
-               end loop;
-
-               --  Remove local variables from the RHSs since they should not
-               --  appear in Initializes aspects.
-               II.RHS.Difference (P.Local_Variables);
-               II.RHS_Proof.Difference (P.Local_Ghost_Variables);
-
-               --  Add state abstractions to Initialized_Vars_And_States when
-               --  all constituents are initialized and remove constituents of
-               --  state abstractions that are not fully initialized.
-               declare
-                  All_LHS : constant Name_Sets.Set := II.LHS or II.LHS_Proof;
-                  State   : Any_Entity_Name;
-               begin
-                  for Var of All_LHS loop
-                     State := GG_Encapsulating_State (Var);
-
-                     if State = Null_Entity_Name then
-                        Initialized_Vars_And_States.Include (Var);
-                     else
-                        if State_Comp_Map (State).Is_Subset (Of_Set => All_LHS)
-                        then
-                           --  All constituents are initialized so we add the
-                           --  entire abstract state.
-                           Initialized_Vars_And_States.Include (State);
-                        else
-                           --  At least one constituent is not initialized so
-                           --  there is no point in considering the current
-                           --  constituent alone as being initialized.
-                           II.LHS.Exclude (Var);
-                           II.LHS_Proof.Exclude (Var);
-                        end if;
-                     end if;
-                  end loop;
-               end;
-
-               --  Insert II into Initializes_Aspects_Map
-               Initializes_Aspects.Insert (P.Name, II);
-            end;
-         end loop;
-
-         if Debug_Print_Generated_Initializes then
-            Print_Generated_Initializes_Aspects;
-         end if;
-      end Generate_Initializes_Aspects;
-
       ---------------------------
       -- Load_GG_Info_From_ALI --
       ---------------------------
@@ -1442,8 +1285,6 @@ package body Flow_Generated_Globals.Phase_2 is
         (ALI_File_Name     : File_Name_Type;
          For_Current_CUnit : Boolean)
       is
-         pragma Unreferenced (For_Current_CUnit);
-
          ALI_File_Name_Str : constant String :=
            Get_Name_String (Full_Lib_File_Name (ALI_File_Name));
 
@@ -1569,6 +1410,12 @@ package body Flow_Generated_Globals.Phase_2 is
                      when E_Package =>
                         Package_Info_List.Append (V.The_Global_Info);
                         GG_Exists.Packages.Insert (V.The_Global_Info.Name);
+
+                        if not For_Current_CUnit
+                          and then not V.The_Global_Info.Local
+                        then
+                           Remote_Packages.Insert (V.The_Global_Info.Name);
+                        end if;
 
                         --  This is a convenient place to populate the
                         --  Package_To_Locals_Map.
@@ -1837,18 +1684,25 @@ package body Flow_Generated_Globals.Phase_2 is
       Resolve_Globals : declare
 
          procedure Add_To_Graph
-           (G          : in out Global_Graphs.Graph;
-            Info       :        Partial_Contract;
-            Refined    :        Boolean);
+           (G       : in out Global_Graphs.Graph;
+            Info    :        Partial_Contract;
+            Refined :        Boolean);
          --  Add 'Proof_Ins, 'Inputs and 'Outputs vertices for S (which can
          --  be either procedure, function, entity or task) and recursively
          --  connect them as needed.
 
+         procedure Add_To_Graph
+           (G    : in out Global_Graphs.Graph;
+            Todo :        Name_Sets.Set;
+            Done :        Name_Sets.Set);
+
          procedure Analyze (Analyzed : Entity_Id);
 
-         procedure Analyze_Remote_Calls;
+         procedure Analyze_Remote_Calls (Remote_Calls : Name_Sets.Set);
 
-         procedure Collect_Remote_Calls (E : Entity_Id);
+         procedure Collect_Remote_Calls
+           (E            :        Entity_Id;
+            Remote_Calls : in out Name_Sets.Set);
 
          procedure Debug (Msg : String);
 
@@ -1859,11 +1713,6 @@ package body Flow_Generated_Globals.Phase_2 is
          procedure Fold (G : Global_Graphs.Graph; Folded : Entity_Name);
 
          Highlighted : Any_Entity_Name := Null_Entity_Name;
-
-         Remote_Calls : Name_Sets.Set;
-         --  Calls from the current compilation unit to outside of the current
-         --  compilation unit. We still need to resolve globals for them to
-         --  make proof happy.
 
          Indent : constant String := "  ";
          --  Indentation for debug output
@@ -1989,6 +1838,46 @@ package body Flow_Generated_Globals.Phase_2 is
                       4 => (Outputs,   Outputs)));
          end Add_To_Graph;
 
+         procedure Add_To_Graph
+           (G    : in out Global_Graphs.Graph;
+            Todo :        Name_Sets.Set;
+            Done :        Name_Sets.Set)
+         is
+            Remains : Name_Sets.Set := Todo;
+            Visited : Name_Sets.Set := Done;
+
+         begin
+            while not Remains.Is_Empty loop
+               declare
+                  Pick : constant Entity_Name := Remains (Remains.First);
+
+                  Picked : constant Phase_1_Info_Maps.Cursor :=
+                    Phase_1_Info.Find (Pick);
+
+               begin
+                  Visited.Insert (Pick);
+
+                  if Phase_1_Info_Maps.Has_Element (Picked) then
+                     declare
+                        Picked_Info : Partial_Contract renames
+                          Phase_1_Info (Picked);
+                     begin
+                        Add_To_Graph (G, Picked_Info, Refined => False);
+
+                        Remains.Union
+                          ((Picked_Info.Proof_Calls or
+                            Picked_Info.Conditional_Calls or
+                            Picked_Info.Definite_Calls) - Visited);
+                     end;
+                  else
+                     pragma Assert (Match (Internal, To_String (Pick)));
+                  end if;
+
+                  Remains.Delete (Pick);
+               end;
+            end loop;
+         end Add_To_Graph;
+
          -------------
          -- Analyze --
          -------------
@@ -2016,46 +1905,14 @@ package body Flow_Generated_Globals.Phase_2 is
                --  A graph that represents the globals that each subprogram has
                --  as inputs, outputs and proof inputs.
 
-               Remains : Name_Sets.Set :=
-                 Analyzed_Info.Proof_Calls or
-                 Analyzed_Info.Conditional_Calls or
-                 Analyzed_Info.Definite_Calls;
-
-               Visited : Name_Sets.Set :=
-                 Name_Sets.To_Set (Analyzed_Info.Name);
-
             begin
                Add_To_Graph (G, Analyzed_Info, Refined => True);
 
-               while not Remains.Is_Empty loop
-                  declare
-                     Pick : constant Entity_Name := Remains (Remains.First);
-
-                     Picked : constant Phase_1_Info_Maps.Cursor :=
-                       Phase_1_Info.Find (Pick);
-
-                  begin
-                     Visited.Insert (Pick);
-
-                     if Phase_1_Info_Maps.Has_Element (Picked) then
-                        declare
-                           Picked_Info : Partial_Contract renames
-                             Phase_1_Info (Picked);
-                        begin
-                           Add_To_Graph (G, Picked_Info, Refined => False);
-
-                           Remains.Union
-                             ((Picked_Info.Proof_Calls or
-                               Picked_Info.Conditional_Calls or
-                               Picked_Info.Definite_Calls) - Visited);
-                        end;
-                     else
-                        pragma Assert (Match (Internal, To_String (Pick)));
-                     end if;
-
-                     Remains.Delete (Pick);
-                  end;
-               end loop;
+               Add_To_Graph (G    => G,
+                             Todo => Analyzed_Info.Proof_Calls or
+                                     Analyzed_Info.Conditional_Calls or
+                                     Analyzed_Info.Definite_Calls,
+                             Done => Name_Sets.To_Set (Analyzed_Info.Name));
 
                if Debug_Print_Global_Graph then
                   Print_Global_Graph (Prefix => Unique_Name (Analyzed),
@@ -2077,45 +1934,12 @@ package body Flow_Generated_Globals.Phase_2 is
          -- Analyze_Remote_Calls --
          --------------------------
 
-         procedure Analyze_Remote_Calls is
+         procedure Analyze_Remote_Calls (Remote_Calls : Name_Sets.Set) is
             G : Global_Graphs.Graph := Global_Graphs.Create;
          begin
-            declare
-               Remains : Name_Sets.Set := Remote_Calls;
-               Visited : Name_Sets.Set;
-
-            begin
-               while not Remains.Is_Empty loop
-                  declare
-                     Pick : constant Entity_Name := Remains (Remains.First);
-
-                     Picked : constant Phase_1_Info_Maps.Cursor :=
-                       Phase_1_Info.Find (Pick);
-
-                  begin
-                     Visited.Insert (Pick);
-
-                     if Phase_1_Info_Maps.Has_Element (Picked) then
-                        declare
-                           Info : Partial_Contract renames
-                             Phase_1_Info (Pick);
-
-                        begin
-                           Add_To_Graph (G, Info, Refined => False);
-
-                           Remains.Union ((Info.Proof_Calls or
-                                            Info.Conditional_Calls or
-                                              Info.Definite_Calls) - Visited);
-                        end;
-                     else
-                        pragma Assert
-                          (Match (Internal, To_String (Pick)));
-                     end if;
-
-                     Remains.Delete (Pick);
-                  end;
-               end loop;
-            end;
+            Add_To_Graph (G    => G,
+                          Todo => Remote_Calls,
+                          Done => Name_Sets.Empty_Set);
 
             G.Close;
 
@@ -2123,8 +1947,12 @@ package body Flow_Generated_Globals.Phase_2 is
                declare
                   E : constant Entity_Id := Find_Entity (C);
                begin
-                  if Present (E)
-                    and then not In_Main_Unit (E)
+                  if (Present (E)
+                      and then not In_Main_Unit (E))
+                    or else
+                      (No (E)
+                       and then Phase_1_Info.Contains (C)
+                       and then Phase_1_Info (C).Kind = E_Package)
                   then
                      Fold (G, C);
                      Debug ("Fold remote " & To_String (C));
@@ -2137,24 +1965,16 @@ package body Flow_Generated_Globals.Phase_2 is
          -- Collect_Remote_Calls --
          --------------------------
 
-         procedure Collect_Remote_Calls (E : Entity_Id) is
+         procedure Collect_Remote_Calls
+           (E            :        Entity_Id;
+            Remote_Calls : in out Name_Sets.Set)
+         is
 
             Caller : constant Entity_Name_Graphs.Vertex_Id :=
               Subprogram_Call_Graph.Get_Vertex (To_Entity_Name (E));
 
          begin
-            if Caller /= Entity_Name_Graphs.Null_Vertex then
-               for Callee of Subprogram_Call_Graph.Get_Collection
-                 (Caller,
-                  Entity_Name_Graphs.Out_Neighbours)
-               loop
-                  Remote_Calls.Include
-                    (Subprogram_Call_Graph.Get_Key (Callee));
-                  Debug
-                    ("Collect remote " &
-                       To_String (Subprogram_Call_Graph.Get_Key (Callee)));
-               end loop;
-            else
+            if Caller = Entity_Name_Graphs.Null_Vertex then
                pragma Assert
                  (case Ekind (E) is
                      when Entry_Kind
@@ -2171,10 +1991,21 @@ package body Flow_Generated_Globals.Phase_2 is
                         True,
                      when others =>
                         raise Program_Error);
+            else
+               for Callee of Subprogram_Call_Graph.Get_Collection
+                 (Caller,
+                  Entity_Name_Graphs.Out_Neighbours)
+               loop
+                  Remote_Calls.Include
+                    (Subprogram_Call_Graph.Get_Key (Callee));
+                  Debug
+                    ("Collect remote " &
+                       To_String (Subprogram_Call_Graph.Get_Key (Callee)));
+               end loop;
             end if;
 
             for Child of Scope_Map (E) loop
-               Collect_Remote_Calls (Child);
+               Collect_Remote_Calls (Child, Remote_Calls);
             end loop;
          end Collect_Remote_Calls;
 
@@ -2324,17 +2155,14 @@ package body Flow_Generated_Globals.Phase_2 is
 
          procedure Fold (G : Global_Graphs.Graph; Folded : Entity_Name) is
 
-            Folded_Entity : constant Checked_Entity_Id :=
-              Find_Entity (Folded);
+            Folded_Entity : constant Entity_Id := Find_Entity (Folded);
 
             Folded_Scope : constant Flow_Scope :=
-              Get_Flow_Scope (Folded_Entity);
+              (if Present (Folded_Entity)
+               then Get_Flow_Scope (Folded_Entity)
+               else Null_Flow_Scope);
 
-            procedure Collect
-              (Kind :     Vertex_Kind;
-               Vars : out Name_Sets.Set);
-            --  Collect variables referenced from the Folded'Kind vertex
-            --  into Vars.
+            function Collect (Caller : Entity_Name) return Globals;
 
             function Is_Fully_Written
               (State   : Entity_Name;
@@ -2351,32 +2179,58 @@ package body Flow_Generated_Globals.Phase_2 is
             -- Collect --
             -------------
 
-            procedure Collect
-              (Kind :     Vertex_Kind;
-               Vars : out Name_Sets.Set)
-            is
-               use Global_Graphs;
+            function Collect (Caller : Entity_Name) return Globals is
 
-               Calls : constant Global_Graphs.Vertex_Id :=
-                 G.Get_Vertex (Global_Id'(Kind => Kind,
-                                          Name => Folded));
+               procedure Collect
+                 (Kind   :     Vertex_Kind;
+                  Vars   : out Name_Sets.Set);
+               --  Collect variables referenced from the Folded'Kind vertex
+               --  into Vars.
+
+               -------------
+               -- Collect --
+               -------------
+
+               procedure Collect
+                 (Kind :     Vertex_Kind;
+                  Vars : out Name_Sets.Set)
+               is
+                  use Global_Graphs;
+
+                  Calls : constant Global_Graphs.Vertex_Id :=
+                    G.Get_Vertex (Global_Id'(Kind => Kind,
+                                             Name => Caller));
+
+               begin
+                  Vars.Clear;
+
+                  if Calls /= Global_Graphs.Null_Vertex then
+                     for V of G.Get_Collection (Calls, Out_Neighbours)
+                     loop
+                        declare
+                           Global : Global_Id renames G.Get_Key (V);
+
+                        begin
+                           if Global.Kind = Variable then
+                              Vars.Insert (Global.Name);
+                           end if;
+                        end;
+                     end loop;
+                  end if;
+               end Collect;
+
+               --  Local variables
+
+               Result : Globals;
+
+            --  Start of processing for Collect
 
             begin
-               Vars.Clear;
+               Collect (Proof_Ins, Result.Proof_Ins);
+               Collect (Inputs,    Result.Inputs);
+               Collect (Outputs,   Result.Outputs);
 
-               if Calls /= Global_Graphs.Null_Vertex then
-                  for V of G.Get_Collection (Calls, Out_Neighbours)
-                  loop
-                     declare
-                        Global : Global_Id renames G.Get_Key (V);
-
-                     begin
-                        if Global.Kind = Variable then
-                           Vars.Insert (Global.Name);
-                        end if;
-                     end;
-                  end loop;
-               end if;
+               return Result;
             end Collect;
 
             ----------------------
@@ -2510,9 +2364,7 @@ package body Flow_Generated_Globals.Phase_2 is
 
                Partial, Projected : Name_Sets.Set;
             begin
-               Collect (Proof_Ins, Refined.Proof_Ins);
-               Collect (Inputs,    Refined.Inputs);
-               Collect (Outputs,   Refined.Outputs);
+               Refined := Collect (Folded);
 
                Refined.Proof_Ins.Difference (Refined.Inputs);
 
@@ -2537,6 +2389,45 @@ package body Flow_Generated_Globals.Phase_2 is
                   end if;
                end loop;
                Proper.Outputs := Projected or Partial;
+
+               --  Handle package Initializes aspect
+               if GG_Exists.Packages.Contains (Folded) then
+                  declare
+                     P : Partial_Contract renames Phase_1_Info (Folded);
+
+                     True_Outputs : constant Name_Sets.Set :=
+                       (Proper.Outputs - Proper.Inputs) or
+                       P.Local_Definite_Writes;
+
+                     II : constant Initializes_Info :=
+                       (LHS       => True_Outputs
+                                     and P.Local_Variables,
+                        LHS_Proof => True_Outputs
+                                     and P.Local_Ghost_Variables,
+                        RHS       => Proper.Inputs
+                                     - P.Local_Variables,
+                        RHS_Proof => Proper.Proof_Ins
+                                     - P.Local_Ghost_Variables);
+                     --  The name dependency map for the Folded package
+                     --
+                     --  LHS and LHS_Proof represent the left hand side of the
+                     --  generated initializes aspect. RHS and RHS_Proof
+                     --  represent the right hand side of the generated
+                     --  Initializes aspect.
+
+                  begin
+                     for Var of II.LHS loop
+                        Initialized_Vars_And_States.Include (Var);
+                     end loop;
+
+                     for Var of II.LHS_Proof loop
+                        Initialized_Vars_And_States.Include (Var);
+                     end loop;
+
+                     --  Insert II into Initializes_Aspects_Map
+                     Initializes_Aspects.Insert (P.Name, II);
+                  end;
+               end if;
             end;
          end Fold;
 
@@ -2547,9 +2438,12 @@ package body Flow_Generated_Globals.Phase_2 is
          if Present (Root_Entity) then
             Analyze (Root_Entity);
 
-            Collect_Remote_Calls (Root_Entity);
-
-            Analyze_Remote_Calls;
+            declare
+               Remote_Calls : Name_Sets.Set;
+            begin
+               Collect_Remote_Calls (Root_Entity, Remote_Calls);
+               Analyze_Remote_Calls (Remote_Calls or Remote_Packages);
+            end;
          end if;
       end Resolve_Globals;
 
@@ -2568,7 +2462,7 @@ package body Flow_Generated_Globals.Phase_2 is
 
       --  Now that the globals are generated, we use them to also generate the
       --  initializes aspects.
-      Generate_Initializes_Aspects;
+      Print_Generated_Initializes_Aspects;
 
       --  Put tasking-related information back to the bag
       Process_Tasking_Graph;
@@ -3077,24 +2971,26 @@ package body Flow_Generated_Globals.Phase_2 is
 
    procedure Print_Generated_Initializes_Aspects is
    begin
-      Write_Line ("Synthesized initializes aspects:");
-      for Init in Initializes_Aspects.Iterate loop
-         declare
-            Pkg : Entity_Name      renames Initializes_Aspects_Maps.Key (Init);
-            II  : Initializes_Info renames Initializes_Aspects (Init);
+      if Debug_Print_Generated_Initializes then
+         Write_Line ("Synthesized initializes aspects:");
+         for Init in Initializes_Aspects.Iterate loop
+            declare
+               Pkg : Entity_Name renames Initializes_Aspects_Maps.Key (Init);
+               II  : Initializes_Info renames Initializes_Aspects (Init);
 
-         begin
-            Indent;
-            Write_Line ("Package " & To_String (Pkg)  & ":");
-            Indent;
-            Print_Name_Set ("LHS      : ", II.LHS);
-            Print_Name_Set ("LHS_Proof: ", II.LHS_Proof);
-            Print_Name_Set ("RHS      : ", II.RHS);
-            Print_Name_Set ("RHS_Proof: ", II.RHS_Proof);
-            Outdent;
-            Outdent;
-         end;
-      end loop;
+            begin
+               Indent;
+               Write_Line ("Package " & To_String (Pkg)  & ":");
+               Indent;
+               Print_Name_Set ("LHS      : ", II.LHS);
+               Print_Name_Set ("LHS_Proof: ", II.LHS_Proof);
+               Print_Name_Set ("RHS      : ", II.RHS);
+               Print_Name_Set ("RHS_Proof: ", II.RHS_Proof);
+               Outdent;
+               Outdent;
+            end;
+         end loop;
+      end if;
    end Print_Generated_Initializes_Aspects;
 
    ------------------------
