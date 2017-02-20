@@ -1284,8 +1284,7 @@ package body Flow_Generated_Globals.Partial is
          procedure Collect
            (Kind :     Global_Kind;
             Vars : out Node_Sets.Set);
-         --  Collect variables referenced from the Folded'Kind vertex
-         --  into Vars.
+         --  Collect variables referenced from the Folded'Kind vertex into Vars
 
          -------------
          -- Collect --
@@ -1345,11 +1344,11 @@ package body Flow_Generated_Globals.Partial is
       function Is_Fully_Written
         (State   : Entity_Id;
          Outputs : Node_Sets.Set)
-            return Boolean
+         return Boolean
       is
         ((for all C of Iter (Refinement_Constituents (State)) =>
              Outputs.Contains (C))
-         and then
+           and then
          (for all C of Iter (Part_Of_Constituents (State)) =>
              Outputs.Contains (C)));
 
