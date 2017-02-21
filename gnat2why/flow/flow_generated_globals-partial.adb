@@ -55,6 +55,8 @@ package body Flow_Generated_Globals.Partial is
    Debug_Global_Graph : constant Boolean := True and XXX;
    --  Display edges added to global graph
 
+   Indent : constant String := "  ";
+
    ----------------------------------------------------------------------------
    --  Preliminaries
    ----------------------------------------------------------------------------
@@ -99,7 +101,8 @@ package body Flow_Generated_Globals.Partial is
                  | E_Loop_Parameter
                  | E_Variable
                  | Formal_Kind
-                 | E_Protected_Type | E_Task_Type); --  ??? not sure about this
+                 | E_Protected_Type
+                 | E_Task_Type);
    --  ??? it seems too risky to just use Assignable_Kind and Object_Kind
 
    ----------------------------------------------------------------------------
@@ -120,8 +123,8 @@ package body Flow_Generated_Globals.Partial is
            when Inputs | Outputs | Proof_Ins =>
               Is_Caller_Entity (Entity),
            when Variable =>
-              Entity = Entity_Id'Last or else --  ??? for Empty_Global
-              Is_Global_Entity (Entity));
+              Entity = Entity_Id'Last or else
+              Is_Global_Entity (Entity));  --  ??? for Empty_Global
    --  Vertex data for the global graph
 
    Empty_Global : constant Global_Id := (Entity => Entity_Id'Last,
@@ -129,11 +132,11 @@ package body Flow_Generated_Globals.Partial is
    --  Dummy value required by the Graphs package; otherwise unused
 
    type No_Colours is (Dummy_Color);
-   --  Dummy type inhabited by only a single value (similar to unit type in
+   --  Dummy type inhabited by only a single value (just like a unit type in
    --  OCaml); needed for graphs with colorless edges.
 
    function Global_Hash (G : Global_Id) return Ada.Containers.Hash_Type;
-   --  Hash function needed to instantiate the Graphs package
+   --  Hash function required by the Graphs package
 
    package Global_Graphs is new Graphs
      (Vertex_Key   => Global_Id,
@@ -253,7 +256,7 @@ package body Flow_Generated_Globals.Partial is
      (E       : Entity_Id;
       Refined : Boolean)
       return Global_Nodes;
-   --  Return globals from the Global and Depends contracts of E (or their
+   --  Return globals from the Global and Depends contracts of E (or from their
    --  refined variants iff Refined is True).
 
    procedure Debug (Label : String; E : Entity_Id);
@@ -319,7 +322,7 @@ package body Flow_Generated_Globals.Partial is
      (E :        Entity_Id;
       C : in out Entity_Contract_Maps.Map)
    with Pre => Is_Caller_Entity (E);
-   --  Moves information to ALI writer (probably should write it directly)
+   --  Moves information to the ALI writer (probably should write it directly)
 
    ----------------------------------------------------------------------------
    --  Bodies
@@ -337,7 +340,7 @@ package body Flow_Generated_Globals.Partial is
       Contr : Contract renames Contracts (E);
 
       procedure Add_Down_Projected_Globals (G : Global_Nodes);
-      procedure Add_Globals                (G : Global_Nodes);
+      procedure Add_Refined_Globals        (G : Global_Nodes);
       --  Connect subprogram's vertices to the corresponding variables:
       --  proof inputs, inputs and outputs.
 
@@ -365,20 +368,22 @@ package body Flow_Generated_Globals.Partial is
       procedure Add_Down_Projected_Globals (G : Global_Nodes) is
 
          Analyzed_View : constant Flow_Scope :=
-           (case Ekind (E) is
+           (case Ekind (Analyzed) is
                when Entry_Kind
                   | E_Function
                   | E_Procedure
-                  | E_Task_Type
                   | E_Protected_Type
+                  | E_Task_Type
                =>
-                  Get_Flow_Scope (Get_Body (E)),
+                  Get_Flow_Scope (Get_Body (Analyzed)),
 
                when E_Package
                =>
-                 (E, Body_Part),
+                 (Analyzed, Body_Part),
 
-               when others => raise Program_Error);
+               when others
+               =>
+                 raise Program_Error);
 
       begin
          Connect (Down_Project (G.Proof_Ins, Analyzed_View),
@@ -392,11 +397,11 @@ package body Flow_Generated_Globals.Partial is
                          Target => Variable)));
       end Add_Down_Projected_Globals;
 
-      -----------------
-      -- Add_Globals --
-      -----------------
+      -------------------------
+      -- Add_Refined_Globals --
+      -------------------------
 
-      procedure Add_Globals (G : Global_Nodes) is
+      procedure Add_Refined_Globals (G : Global_Nodes) is
       begin
          Connect (G.Proof_Ins, (1 => (Source => Proof_Ins,
                                       Target => Variable)));
@@ -404,7 +409,7 @@ package body Flow_Generated_Globals.Partial is
                                       Target => Variable)));
          Connect (G.Outputs,   (1 => (Source => Outputs,
                                       Target => Variable)));
-      end Add_Globals;
+      end Add_Refined_Globals;
 
       -------------
       -- Connect --
@@ -422,13 +427,10 @@ package body Flow_Generated_Globals.Partial is
          -----------
 
          function Image (G : Global_Id) return String is
-         begin
-            return
-              (if Is_Heap_Entity (G.Entity)
-               then Name_Of_Heap_Variable
-               else Full_Source_Name (G.Entity)) &
-              "'" & Global_Kind'Image (G.Kind);
-         end Image;
+           ((if Is_Heap_Entity (G.Entity)
+             then Name_Of_Heap_Variable
+             else Full_Source_Name (G.Entity)) &
+            "'" & Global_Kind'Image (G.Kind));
 
       --  Start of processing for Connect
 
@@ -453,9 +455,9 @@ package body Flow_Generated_Globals.Partial is
 
                   if Debug_Global_Graph then
                      Ada.Text_IO.Put_Line
-                       ("  " &
-                          Image (Source) & " -> " &
-                          Image (Target));
+                       (Indent &
+                        Image (Source) & " -> " &
+                        Image (Target));
                   end if;
                end;
             end loop;
@@ -496,7 +498,7 @@ package body Flow_Generated_Globals.Partial is
             Add_Down_Projected_Globals (Contr.Proper);
          else
             Debug ("Adding to graph (refined):", E);
-            Add_Globals (Contr.Refined);
+            Add_Refined_Globals (Contr.Refined);
          end if;
       else
          Debug ("Adding to graph (proper):", E);
@@ -548,6 +550,10 @@ package body Flow_Generated_Globals.Partial is
          Add (Child, Analyzed, Contracts, Global_Graph);
       end loop;
    end Add;
+
+   ----------------------
+   -- Add_Nonreturning --
+   ----------------------
 
    procedure Add_Nonreturning (E          :        Entity_Id;
                                Contracts  :        Entity_Contract_Maps.Map;
@@ -1046,8 +1052,6 @@ package body Flow_Generated_Globals.Partial is
      (Contracts : Entity_Contract_Maps.Map;
       Analyzed  : Entity_Id)
    is
-      Indent : constant String := "  ";
-
       procedure Dump (E : Entity_Id);
 
       procedure Dump (Label : String; Vars : Node_Sets.Set);
