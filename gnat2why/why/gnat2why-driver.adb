@@ -52,6 +52,7 @@ with Gnat2Why.Decls;                  use Gnat2Why.Decls;
 with Gnat2Why.Error_Messages;         use Gnat2Why.Error_Messages;
 with Gnat2Why.External_Axioms;        use Gnat2Why.External_Axioms;
 with Gnat2Why.Subprograms;            use Gnat2Why.Subprograms;
+with Gnat2Why.Tables;                 use Gnat2Why.Tables;
 with Gnat2Why.Types;                  use Gnat2Why.Types;
 with Gnat2Why.Util;                   use Gnat2Why.Util;
 with Gnat2Why_Args;
@@ -79,6 +80,7 @@ with Switch;                          use Switch;
 with Why;                             use Why;
 with Why.Atree.Modules;               use Why.Atree.Modules;
 with Why.Atree.Sprint;                use Why.Atree.Sprint;
+with Why.Atree.Tables;
 with Why.Inter;                       use Why.Inter;
 
 pragma Warnings (Off, "unit ""Why.Atree.Treepr"" is not referenced");
@@ -180,11 +182,6 @@ package body Gnat2Why.Driver is
                begin
                   Generate_Type_Completion (File, E);
                end;
-            end if;
-
-         when E_Package =>
-            if Entity_In_Ext_Axioms (E) then
-               Complete_External_Entities (E);
             end if;
 
          when others =>
@@ -750,6 +747,10 @@ package body Gnat2Why.Driver is
    --  Start of processing for Translate_CUnit
 
    begin
+      --  Store information for entities
+
+      For_All_Entities (Store_Information_For_Entity'Access);
+
       --  Translate Ada entities into Why3
 
       For_All_Entities (Translate_Entity'Access);
@@ -774,6 +775,10 @@ package body Gnat2Why.Driver is
       For_All_Entities (Generate_VCs'Access);
 
       Print_Why_File;
+
+      --  After printing the .mlw file the memory consumed by the Why3 AST is
+      --  no longer needed; give it back to OS, so that provers can use it.
+      Why.Atree.Tables.Free;
    end Translate_CUnit;
 
    ----------------------
@@ -942,6 +947,7 @@ package body Gnat2Why.Driver is
 
       procedure Translate_Standard_Entity (E : Entity_Id) is
       begin
+         Store_Information_For_Entity (E);
          Translate_Entity (E);
          Complete_Declaration (E);
       end Translate_Standard_Entity;

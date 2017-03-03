@@ -30,6 +30,7 @@ with Exp_Util;               use Exp_Util;
 with Flow_Types;
 with Flow_Utility;
 with Gnat2Why.Expr;          use Gnat2Why.Expr;
+with Gnat2Why.Tables;        use Gnat2Why.Tables;
 with Namet;                  use Namet;
 with Nlists;                 use Nlists;
 with Sem_Aux;                use Sem_Aux;
@@ -481,6 +482,65 @@ package body Gnat2Why.Util is
    begin
       return Compute_Spec (Params, Nodes, Domain);
    end Compute_Spec;
+
+   ------------------------------
+   -- Count_Why_Regular_Fields --
+   ------------------------------
+
+   function Count_Why_Regular_Fields (E : Entity_Id) return Natural is
+      Count : Natural := Natural (Get_Component_Set (E).Length);
+
+   begin
+      --  Add one field for tagged types to represent the unknown extension
+      --  components. The field for the tag itself is stored directly in the
+      --  Why3 record.
+
+      if Is_Tagged_Type (E) then
+         Count := Count + 1;
+      end if;
+
+      return Count;
+   end Count_Why_Regular_Fields;
+
+   --------------------------------
+   -- Count_Why_Top_Level_Fields --
+   --------------------------------
+
+   function Count_Why_Top_Level_Fields (E : Entity_Id) return Natural is
+      Count : Natural := 0;
+
+   begin
+      --  Store discriminants in a separate sub-record field, so that
+      --  subprograms that cannot modify discriminants are passed this
+      --  sub-record by copy instead of by reference (with the split version
+      --  of the record).
+
+      if Has_Discriminants (E) then
+         Count := Count + 1;
+      end if;
+
+      --  Store components in a separate sub-record field. This includes:
+      --    . visible components of the type
+      --    . invisible components and discriminants of a private ancestor
+      --    . invisible components of a derived type
+
+      if Count_Why_Regular_Fields (E) > 0 then
+         Count := Count + 1;
+      end if;
+
+      --  Directly store the attr__constrained and __tag fields in the record,
+      --  as these fields cannot be modified after object creation.
+
+      if Has_Defaulted_Discriminants (E) then
+         Count := Count + 1;
+      end if;
+
+      if Is_Tagged_Type (E) then
+         Count := Count + 1;
+      end if;
+
+      return Count;
+   end Count_Why_Top_Level_Fields;
 
    -------------------------
    -- Create_Zero_Binding --
@@ -1259,6 +1319,146 @@ package body Gnat2Why.Util is
         and then (not Has_Static_Scalar_Subtype (T)
                   or else Is_Null_Range (T));
    end Type_Is_Modeled_As_Base;
+
+   ----------------------------------
+   -- Type_Needs_Dynamic_Invariant --
+   ----------------------------------
+
+   function Type_Needs_Dynamic_Invariant (T : Entity_Id) return Boolean is
+      function Has_Potentially_Inherited_Type_Invariants
+        (T : Entity_Id) return Boolean;
+      --  Return True if T or one of its ancestors has a type invariant
+
+      function Type_Needs_Dynamic_Invariant
+        (T         : Entity_Id;
+         Top_Level : Boolean) return Boolean;
+      --  Generation of dynamic invariants is slightly different when called
+      --  recursively on component types of arrays or records. Top_Level should
+      --  be False in recursive calls.
+
+      -----------------------------------------------
+      -- Has_Potentially_Inherited_Type_Invariants --
+      -----------------------------------------------
+
+      function Has_Potentially_Inherited_Type_Invariants
+        (T : Entity_Id) return Boolean
+      is
+         Current : Entity_Id := T;
+         Parent  : Entity_Id;
+      begin
+         loop
+            if Has_Invariants_In_SPARK (Current) then
+               return True;
+            end if;
+
+            if Full_View_Not_In_SPARK (Current) then
+               Parent := Get_First_Ancestor_In_SPARK (Current);
+            else
+               Parent := Retysp (Etype (Current));
+            end if;
+            exit when Current = Parent;
+            Current := Parent;
+         end loop;
+         return False;
+      end Has_Potentially_Inherited_Type_Invariants;
+
+      ----------------------------------
+      -- Type_Needs_Dynamic_Invariant --
+      ----------------------------------
+
+      function Type_Needs_Dynamic_Invariant
+        (T         : Entity_Id;
+         Top_Level : Boolean) return Boolean
+      is
+         Ty_Ext : constant Entity_Id := Retysp (T);
+
+      begin
+         --  Dynamic invariant of the type itself
+
+         --  If the type is modeled as its base type, we need an invariant for
+         --  its specific subtype constraint.
+
+         if Type_Is_Modeled_As_Base (Ty_Ext)
+
+           --  If the type is represented in split form, we need the invariant
+           --  but not for components of arrays and records which are never
+           --  represented in split form.
+
+           or else (Top_Level and then Use_Split_Form_For_Type (Ty_Ext))
+
+           --  For non static array types, we need an invariant to state the
+           --  ranges of bounds.
+
+           or else (Is_Array_Type (Ty_Ext)
+                     and then not Is_Static_Array_Type (Ty_Ext))
+
+           --  For constrained types with discriminants, we supply the value
+           --  of the discriminants.
+
+           or else (Has_Discriminants (Ty_Ext)
+                     and then Is_Constrained (Ty_Ext))
+
+           --  For component types with defaulted discriminants, we know the
+           --  discriminants have their default value.
+
+           or else (not Top_Level
+                     and then Has_Discriminants (Ty_Ext)
+                     and then Has_Defaulted_Discriminants (Ty_Ext))
+
+           --  We need an invariant for type predicates
+
+           or else Has_Predicates (Ty_Ext)
+
+           --  We need an invariant for type invariants
+
+           or else Has_Potentially_Inherited_Type_Invariants (Ty_Ext)
+         then
+            return True;
+         end if;
+
+         --  For composite types, check for dynamic invariants on components
+
+         if Is_Array_Type (Ty_Ext)
+           and then Ekind (Ty_Ext) /= E_String_Literal_Subtype
+         then
+            return
+              Type_Needs_Dynamic_Invariant (Component_Type (Ty_Ext), False);
+
+         elsif Is_Record_Type (Ty_Ext)
+           or else Is_Private_Type (Ty_Ext)
+           or else Is_Concurrent_Type (Ty_Ext)
+         then
+            if Has_Discriminants (Ty_Ext) then
+               declare
+                  Discr : Entity_Id := First_Discriminant (Ty_Ext);
+               begin
+                  while Present (Discr) loop
+                     if Type_Needs_Dynamic_Invariant (Etype (Discr), False)
+                     then
+                        return True;
+                     end if;
+                     Next_Discriminant (Discr);
+                  end loop;
+               end;
+            end if;
+
+            for Comp of Get_Component_Set (Ty_Ext) loop
+               if not Is_Type (Comp)
+                 and then Type_Needs_Dynamic_Invariant (Etype (Comp), False)
+               then
+                  return True;
+               end if;
+            end loop;
+         end if;
+
+         return False;
+      end Type_Needs_Dynamic_Invariant;
+
+   --  Start of processing for Type_Needs_Dynamic_Invariant
+
+   begin
+      return Type_Needs_Dynamic_Invariant (T, True);
+   end Type_Needs_Dynamic_Invariant;
 
    ------------------
    -- Type_Of_Node --

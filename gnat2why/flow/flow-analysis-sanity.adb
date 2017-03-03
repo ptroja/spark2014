@@ -123,8 +123,8 @@ package body Flow.Analysis.Sanity is
            (Flow_Ids : Ordered_Flow_Id_Sets.Set;
             Err_Desc : String;
             Err_Node : Node_Id);
-         --  Iterates over Flow_Ids. An error is issued for any member of that
-         --  set which does NOT denote a constant, a bound or a discriminant.
+         --  Issues an error for any member of the Flow_Ids which does NOT
+         --  denote a constant, a bound or a discriminant.
 
          function Check_Name (N : Node_Id) return Traverse_Result;
          --  Checks indexed components and slices which are part of a Name
@@ -229,12 +229,10 @@ package body Flow.Analysis.Sanity is
                begin
                   if Has_Predicates (Typ) then
                      declare
-                        P          : constant Entity_Id :=
-                          Predicate_Function (Typ);
                         GP, GI, GO : Flow_Id_Sets.Set;
                         Deps       : Ordered_Flow_Id_Sets.Set;
                      begin
-                        Get_Globals (Subprogram => P,
+                        Get_Globals (Subprogram => Predicate_Function (Typ),
                                      Scope      => FA.B_Scope,
                                      Classwide  => False,
                                      Proof_Ins  => GP,
@@ -261,16 +259,18 @@ package body Flow.Analysis.Sanity is
                         IP   : constant Entity_Id := Invariant_Procedure (Typ);
                         Expr : constant Node_Id :=
                           Get_Expr_From_Check_Only_Proc (IP);
-                        Vars : constant Flow_Id_Sets.Set := Get_Variables
-                          (Expr,
-                           Scope                => FA.B_Scope,
-                           Local_Constants      => Node_Sets.Empty_Set,
-                           Fold_Functions       => False,
-                           Use_Computed_Globals => True,
-                           Reduced              => True);
-                        Funs : constant Node_Sets.Set := Get_Functions
-                          (Expr,
-                           Include_Predicates => False);
+                        Vars : constant Flow_Id_Sets.Set :=
+                          Get_Variables
+                            (Expr,
+                             Scope                => FA.B_Scope,
+                             Local_Constants      => Node_Sets.Empty_Set,
+                             Fold_Functions       => False,
+                             Use_Computed_Globals => True,
+                             Reduced              => True);
+                        Funs : constant Node_Sets.Set :=
+                          Get_Functions
+                            (Expr,
+                             Include_Predicates => False);
                      begin
                         --  Check 4.4(2) (no variable inputs)
                         Check_Flow_Id_Set (Flow_Ids => To_Ordered_Flow_Id_Set
@@ -278,7 +278,7 @@ package body Flow.Analysis.Sanity is
                                            Err_Desc => "invariant",
                                            Err_Node => Typ);
 
-                        --  Check 7.3.2(4) (no calls to boundary subp)
+                        --  Check 7.3.2(4) (no calls to boundary subprograms)
                         for F of Funs loop
                            if Is_Boundary_Subprogram_For_Type (F, Typ) then
                               Error_Msg_Flow

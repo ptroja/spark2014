@@ -27,6 +27,7 @@ with Common_Containers;          use Common_Containers;
 with Elists;                     use Elists;
 with GNAT.Source_Info;
 with Gnat2Why.Expr;              use Gnat2Why.Expr;
+with Gnat2Why.Tables;            use Gnat2Why.Tables;
 with Namet;                      use Namet;
 with Nlists;                     use Nlists;
 with Sem_Aux;                    use Sem_Aux;
@@ -35,6 +36,8 @@ with Sinfo;                      use Sinfo;
 with Sinput;                     use Sinput;
 with Snames;                     use Snames;
 with SPARK_Definition;           use SPARK_Definition;
+with SPARK_Util;                 use SPARK_Util;
+with SPARK_Util.Types;           use SPARK_Util.Types;
 with Uintp;                      use Uintp;
 with VC_Kinds;                   use VC_Kinds;
 with Why.Atree.Accessors;        use Why.Atree.Accessors;
@@ -233,7 +236,10 @@ package body Why.Gen.Records is
       end loop;
 
       for Field of Get_Component_Set (Ty_Ext) loop
-         if Ekind (Field) = E_Component then
+
+         --  Only consider components and part of variables
+
+         if Ekind (Field) not in E_Discriminant | Type_Kind then
 
             R_Acc := New_Ada_Record_Access
               (Empty, EW_Term, R_Expr, Field, Ty_Ext);

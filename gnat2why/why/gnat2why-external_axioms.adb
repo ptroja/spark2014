@@ -23,12 +23,8 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
-with Ada.Containers.Doubly_Linked_Lists;
-with Atree;                              use Atree;
 with Common_Containers;                  use Common_Containers;
-with Einfo;                              use Einfo;
 with Exp_Util;                           use Exp_Util;
-with Gnat2Why.Types;                     use Gnat2Why.Types;
 with Gnat2Why.Util;                      use Gnat2Why.Util;
 with Namet;                              use Namet;
 with Nlists;                             use Nlists;
@@ -36,8 +32,6 @@ with Sem_Aux;                            use Sem_Aux;
 with Sem_Util;                           use Sem_Util;
 with Sinfo;                              use Sinfo;
 with SPARK_Util;                         use SPARK_Util;
-with SPARK_Util.Types;                   use SPARK_Util.Types;
-with Stand;                              use Stand;
 with Why.Atree.Builders;                 use Why.Atree.Builders;
 with Why.Atree.Modules;                  use Why.Atree.Modules;
 with Why.Gen.Arrays;                     use Why.Gen.Arrays;
@@ -50,95 +44,98 @@ with Why.Types;                          use Why.Types;
 
 package body Gnat2Why.External_Axioms is
 
-   package List_Of_Entity is new
-     Ada.Containers.Doubly_Linked_Lists (Entity_Id);
-
-   procedure Register_External_Entities (E : Entity_Id);
+   procedure Register_External_Entities (Package_Entity : Entity_Id);
    --  This function is called on a package with external axioms.
    --  It registers all entities in the global symbol table.
 
-   --------------------------------
-   -- Complete_External_Entities --
-   --------------------------------
+   -------------------------------
+   -- Process_External_Entities --
+   -------------------------------
 
-   procedure Complete_External_Entities (E : Entity_Id) is
+   procedure Process_External_Entities
+     (Package_Entity : Entity_Id;
+      Process        : not null access procedure (E : Entity_Id))
+   is
 
-      procedure Complete_Decls (Decls : List_Id);
-      --  Complete declarations of type entities from the declaration list
+      procedure Process_Decls (Decls : List_Id);
+      --  Process entities from the declaration list
 
-      --------------------
-      -- Complete_Decls --
-      --------------------
+      -------------------
+      -- Process_Decls --
+      -------------------
 
-      procedure Complete_Decls (Decls : List_Id) is
+      procedure Process_Decls (Decls : List_Id) is
          N : Node_Id := First (Decls);
+
       begin
+         --  For object, subprogram, and type declarations call Process on the
+         --  defining entity.
+
          while Present (N) loop
 
-            --  For type declarations, generate a completion module
+            --  A subprogram may have been rewritten by the frontend, in
+            --  particular, it happens for expression functions. In this case,
+            --  the declaration won't come from source but its original node
+            --  will.
 
-            if Comes_From_Source (N)
+            if (Comes_From_Source (N)
+                 or else (Present (Original_Node (N))
+                           and then Comes_From_Source (Original_Node (N))))
               and then Nkind (N) in
-              N_Full_Type_Declaration
+                  N_Full_Type_Declaration
                 | N_Private_Extension_Declaration
-                  | N_Private_Type_Declaration
-                    | N_Subtype_Declaration
+                | N_Private_Type_Declaration
+                | N_Subtype_Declaration
+                | N_Object_Declaration
+                | N_Subprogram_Declaration
+                | N_Subprogram_Instantiation
             then
-               declare
-                  E  : constant Entity_Id := Defining_Entity (N);
-               begin
-                  if not Is_Standard_Boolean_Type (E)
-                    and then E /= Universal_Fixed
-                  then
-                     declare
-                        Compl_File : constant W_Section_Id :=
-                          Dispatch_Entity_Completion (E);
-                     begin
-                        Generate_Type_Completion (Compl_File, E);
-                     end;
-                  end if;
-               end;
+               Process (Defining_Entity (N));
             end if;
 
-            --  Call Complete_Decls recursively on Package_Declaration and
+            --  Call Process_Decls recursively on Package_Declaration and
             --  Package_Instantiation.
 
-            if Comes_From_Source (N) and then
-              Nkind (N) = N_Package_Instantiation
-            then
-               Complete_Decls
-                 (Decls  => Visible_Declarations
-                    (Specification (Instance_Spec (N))));
-            end if;
-
-            if Comes_From_Source (N) and then
-              Nkind (N) in N_Package_Declaration
-            then
-               Complete_Decls
-                 (Decls  => Visible_Declarations (Package_Specification (N)));
+            if Comes_From_Source (N) then
+               case Nkind (N) is
+                  when N_Package_Instantiation =>
+                     Process_Decls
+                       (Decls  => Visible_Declarations
+                          (Specification (Instance_Spec (N))));
+                  when N_Package_Declaration =>
+                     Process_Decls
+                       (Decls  => Visible_Declarations
+                          (Package_Specification (N)));
+                  when others =>
+                     null;
+               end case;
             end if;
 
             Next (N);
          end loop;
-      end Complete_Decls;
+      end Process_Decls;
 
-   --  Start of processing for Complete_External_Entities
+   --  Start of processing for Process_External_Entities
 
    begin
-      --  Complete type declarations
+      --  Process declarations
 
-      Complete_Decls
-        (Decls  => Visible_Declarations (Package_Specification (E)));
-   end Complete_External_Entities;
+      Process_Decls
+        (Decls  => Visible_Declarations
+           (Package_Specification (Package_Entity)));
+   end Process_External_Entities;
 
    --------------------------------
    -- Register_External_Entities --
    --------------------------------
 
-   procedure Register_External_Entities (E : Entity_Id) is
+   procedure Register_External_Entities (Package_Entity : Entity_Id) is
 
-      procedure Register_Decls (Decls : List_Id);
-      --  Register the entities of the declarations
+      procedure Register_Entity (E : Entity_Id) with
+        Pre => Ekind (E) /= E_Operator;
+      --  Register entities declared in a package with external axioms in the
+      --  symbol table. Also clones array theories for these entities if
+      --  necessary.
 
       function Get_Subp_Symbol
         (E    : Entity_Id;
@@ -153,101 +150,65 @@ package body Gnat2Why.External_Axioms is
                        Ada_Node => E,
                        Mutable  => False));
 
-      --------------------
-      -- Register_Decls --
-      --------------------
+      ---------------------
+      -- Register_Entity --
+      ---------------------
 
-      procedure Register_Decls (Decls : List_Id) is
-         N : Node_Id := First (Decls);
+      procedure Register_Entity (E : Entity_Id) is
       begin
-         while Present (N) loop
 
-            --  A subprogram may have been rewritten by the frontend, in
-            --  particular, it happens for expression functions. In this case,
-            --  the declaration won't come from source but its original node
-            --  will.
+         --  Store symbols for subprogram and object entities in the symbol
+         --  table so they can be retrieved when translating user code.
 
-            if (Comes_From_Source (N)
-                or else (Present (Original_Node (N))
-                         and then Comes_From_Source (Original_Node (N))))
-              and then Nkind (N) in N_Subprogram_Declaration
-              | N_Object_Declaration
-            then
+         if Ekind (E) in Subprogram_Kind | Object_Kind then
+            if Ekind (E) = E_Function then
                declare
-                  E : constant Entity_Id := Defining_Entity (N);
-                  Name : constant String := Short_Name (E);
-                  Logic_Name : constant String :=
-                    Name & "__logic";
+                  Name       : constant String := Short_Name (E);
+                  Logic_Name : constant String := Name & "__logic";
                begin
-                  if Ekind (E) = E_Function then
-                     Ada_Ent_To_Why.Insert
-                       (Symbol_Table, E,
-                        Item_Type'(Func,
-                          For_Logic => Get_Subp_Symbol (E, Logic_Name),
-                          For_Prog  => Get_Subp_Symbol (E, Name)));
-                  elsif Ekind (E) = E_Procedure then
-                     Insert_Entity
-                       (E,
-                        To_Why_Id (E, Domain => EW_Term),
-                        Mutable => False);
-                  else
-                     Ada_Ent_To_Why.Insert
-                       (Symbol_Table, E, Mk_Item_Of_Entity (E));
-                  end if;
+                  Ada_Ent_To_Why.Insert
+                    (Symbol_Table, E,
+                     Item_Type'(Func,
+                       For_Logic => Get_Subp_Symbol (E, Logic_Name),
+                       For_Prog  => Get_Subp_Symbol (E, Name)));
                end;
+            elsif Ekind (E) = E_Procedure then
+               Insert_Entity
+                 (E,
+                  To_Why_Id (E, Domain => EW_Term),
+                  Mutable => False);
+            else
+               pragma Assert (Ekind (E) in Object_Kind);
+               Ada_Ent_To_Why.Insert
+                 (Symbol_Table, E, Mk_Item_Of_Entity (E));
             end if;
+         end if;
 
-            --  If there is a user declaration of an array type, possibly
-            --  create a new type of array by cloning underlying Why3 theories.
-            --  If the type of the array's component is declared locally to the
-            --  package with external axioms, it is the responsability of the
-            --  theory file to provide the new array type.
+         --  If there is a user declaration of an array type, possibly
+         --  create a new type of array by cloning underlying Why3 theories.
+         --  If the type of the array's component is declared locally to the
+         --  package with external axioms, it is the responsability of the
+         --  theory file to provide the new array type.
 
-            if Comes_From_Source (N)
-              and then Nkind (N) = N_Full_Type_Declaration
-              and then Is_Array_Type (Defining_Identifier (N))
-            then
-               declare
-                  File : constant W_Section_Id :=
-                    Dispatch_Entity (Defining_Identifier (N));
-                  Element_Is_Local : constant Boolean :=
-                    Containing_Package_With_Ext_Axioms
-                      (Component_Type (Defining_Identifier (N))) = E;
-               begin
-                  Create_Rep_Array_Theory_If_Needed
-                    (File          => File,
-                     E             => Defining_Identifier (N),
-                     Register_Only => Element_Is_Local);
-               end;
-            end if;
-
-            --  Call Register_Decls recursively on Package_Declaration and
-            --  Package_Instantiation.
-
-            if Comes_From_Source (N) and then
-              Nkind (N) = N_Package_Instantiation
-            then
-               Register_Decls
-                 (Decls  => Visible_Declarations
-                    (Specification (Instance_Spec (N))));
-            end if;
-
-            if Comes_From_Source (N) and then
-              Nkind (N) in N_Package_Declaration
-            then
-               Register_Decls
-                 (Decls  => Visible_Declarations (Package_Specification (N)));
-            end if;
-
-            Next (N);
-         end loop;
-      end Register_Decls;
+         if Is_Array_Type (E) then
+            declare
+               File             : constant W_Section_Id := Dispatch_Entity (E);
+               Element_Is_Local : constant Boolean :=
+                Containing_Package_With_Ext_Axioms (Component_Type (E)) =
+                  Package_Entity;
+            begin
+               Create_Rep_Array_Theory_If_Needed
+                 (File          => File,
+                  E             => E,
+                  Register_Only => Element_Is_Local);
+            end;
+         end if;
+      end Register_Entity;
 
    --  Start of processing for Register_External_Entities
 
    begin
-      Register_Decls
-        (Decls  => Visible_Declarations (Package_Specification (E)));
+      Process_External_Entities (Package_Entity, Register_Entity'Access);
    end Register_External_Entities;
 
    --------------------------------------------

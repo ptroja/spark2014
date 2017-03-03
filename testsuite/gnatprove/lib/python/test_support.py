@@ -100,7 +100,7 @@ def cat(filename, sort=False):
                 print f.read()
 
 
-def ls(directory=None):
+def ls(directory=None, filter_output=None):
     """ls wrapper for the testsuite
 
     PARAMETERS
@@ -111,7 +111,10 @@ def ls(directory=None):
     else:
         cmd = ["ls"]
     process = Run(cmd)
-    print_sorted(str.splitlines(process.out))
+    strlist = str.splitlines(process.out)
+    if filter_output is not None:
+        strlist = grep(filter_output, strlist, invert=True)
+    print_sorted(strlist)
 
 
 def matches(comp_reg, s, invert):
@@ -651,12 +654,13 @@ def prove_all(opt=None, steps=max_steps, procs=parallel_procs,
 
     fullopt += ["--mode=%s" % (mode)]
     fullopt += ["-j%d" % (procs)]
-    if inverse_prover():
-        inverse = prover[:]
-        inverse.reverse()
-        fullopt += build_prover_switch(inverse)
-    else:
-        fullopt += build_prover_switch(prover)
+    if prover:
+        if inverse_prover():
+            inverse = prover[:]
+            inverse.reverse()
+            fullopt += build_prover_switch(inverse)
+        else:
+            fullopt += build_prover_switch(prover)
     if benchmark_mode():
         fullopt += ["--benchmark"]
     if not counterexample:
