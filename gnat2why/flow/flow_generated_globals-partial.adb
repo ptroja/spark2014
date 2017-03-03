@@ -109,40 +109,33 @@ package body Flow_Generated_Globals.Partial is
    --  Types
    ----------------------------------------------------------------------------
 
-   type Global_Kind is (Proof_Ins, Inputs, Outputs, Variable);
-   pragma Ordered (Global_Kind);
-   --  Kinds of vertices in the global graph; ordering matters because we use
-   --  it as an array index.
+   type Call_Kind is (C_Definite, C_Conditional, C_Proof);
+   --  Kinds of vertices in the call graph
 
-   type Global_Id is record
+   type Call_Id is record
       Entity : Entity_Id;
-      Kind   : Global_Kind;
+      Kind   : Call_Kind;
    end record with
      Dynamic_Predicate =>
-       (case Kind is
-           when Inputs | Outputs | Proof_Ins =>
-              Is_Caller_Entity (Entity),
-           when Variable =>
-              Entity = Entity_Id'Last or else
-              Is_Global_Entity (Entity));  --  ??? for Empty_Global
-   --  Vertex data for the global graph
+       Entity = Entity_Id'Last or else Is_Caller_Entity (Entity);
+   --  Vertex data for the call graph
 
-   Empty_Global : constant Global_Id := (Entity => Entity_Id'Last,
-                                         Kind   => Global_Kind'Last);
+   Empty_Call : constant Call_Id := (Entity => Entity_Id'Last,
+                                     Kind   => Call_Kind'Last);
    --  Dummy value required by the Graphs package; otherwise unused
 
    type No_Colours is (Dummy_Color);
    --  Dummy type inhabited by only a single value (just like a unit type in
    --  OCaml); needed for graphs with colorless edges.
 
-   function Global_Hash (G : Global_Id) return Ada.Containers.Hash_Type;
+   function Hash (C : Call_Id) return Ada.Containers.Hash_Type;
    --  Hash function required by the Graphs package
 
    package Global_Graphs is new Graphs
-     (Vertex_Key   => Global_Id,
-      Key_Hash     => Global_Hash,
+     (Vertex_Key   => Call_Id,
+      Key_Hash     => Hash,
       Edge_Colours => No_Colours,
-      Null_Key     => Empty_Global,
+      Null_Key     => Empty_Call,
       Test_Key     => "=");
 
    type Global_Nodes is record
@@ -294,19 +287,6 @@ package body Flow_Generated_Globals.Partial is
                                   G      : Global_Graphs.Graph);
    --  Debug output
 
-   procedure Recategorize_Calls
-     (Contracts :        Entity_Contract_Maps.Map;
-      Contr     : in out Contract)
-   with Post => Contr.Proof_Calls.Intersection
-                  (Contr.Conditional_Calls).Is_Empty and then
-                Contr.Proof_Calls.Intersection
-                  (Contr.Definite_Calls).Is_Empty and then
-                Contr.Conditional_Calls.Intersection
-                  (Contr.Definite_Calls).Is_Empty;
-   --  Recategorize calls into proof, conditional and definite; called when
-   --  resolving calls within the analyzed scope.
-   --  ??? rewrite Post using Disjoint (x, y, z)
-
    procedure To_Node_Set
      (Names :     Name_Sets.Set;
       Nodes : out Node_Sets.Set);
@@ -339,19 +319,9 @@ package body Flow_Generated_Globals.Partial is
    is
       Contr : Contract renames Contracts (E);
 
-      procedure Add_Down_Projected_Globals (G : Global_Nodes);
-      procedure Add_Refined_Globals        (G : Global_Nodes);
-      --  Connect subprogram's vertices to the corresponding variables:
-      --  proof inputs, inputs and outputs.
-
       type Edge_Kind is record
-         Source, Target : Global_Kind;
-      end record
-        with Predicate => Edge_Kind.Source in Proof_Ins | Inputs | Outputs;
-      --  Kind of edges in the global graphs: they are always from subprogram
-      --  (represented as Proof_Ins, Inputs and Outputs) to either other
-      --  subprogram (when it represents a call) or to variable (when it
-      --  represents a direct access to global).
+         Source, Target : Call_Kind;
+      end record;
 
       type Edge_Kinds is array (Positive range <>) of Edge_Kind;
       --  Technical type for representing a bucket of edge kinds
@@ -361,56 +331,6 @@ package body Flow_Generated_Globals.Partial is
          Edges   : Edge_Kinds);
       --  Connect Targets using the given kinds of edges
 
-      --------------------------------
-      -- Add_Down_Projected_Globals --
-      --------------------------------
-
-      procedure Add_Down_Projected_Globals (G : Global_Nodes) is
-
-         Analyzed_View : constant Flow_Scope :=
-           (case Ekind (Analyzed) is
-               when Entry_Kind
-                  | E_Function
-                  | E_Procedure
-                  | E_Protected_Type
-                  | E_Task_Type
-               =>
-                  Get_Flow_Scope (Get_Body (Analyzed)),
-
-               when E_Package
-               =>
-                 (Analyzed, Body_Part),
-
-               when others
-               =>
-                 raise Program_Error);
-
-      begin
-         Connect (Down_Project (G.Proof_Ins, Analyzed_View),
-                  (1 => (Source => Proof_Ins,
-                         Target => Variable)));
-         Connect (Down_Project (G.Inputs, Analyzed_View),
-                  (1 => (Source => Inputs,
-                         Target => Variable)));
-         Connect (Down_Project (G.Outputs, Analyzed_View),
-                  (1 => (Source => Outputs,
-                         Target => Variable)));
-      end Add_Down_Projected_Globals;
-
-      -------------------------
-      -- Add_Refined_Globals --
-      -------------------------
-
-      procedure Add_Refined_Globals (G : Global_Nodes) is
-      begin
-         Connect (G.Proof_Ins, (1 => (Source => Proof_Ins,
-                                      Target => Variable)));
-         Connect (G.Inputs,    (1 => (Source => Inputs,
-                                      Target => Variable)));
-         Connect (G.Outputs,   (1 => (Source => Outputs,
-                                      Target => Variable)));
-      end Add_Refined_Globals;
-
       -------------
       -- Connect --
       -------------
@@ -419,18 +339,15 @@ package body Flow_Generated_Globals.Partial is
         (Targets : Node_Sets.Set;
          Edges   : Edge_Kinds)
       is
-         function Image (G : Global_Id) return String;
-         --  Convert global G to string usable for debugging
+         function Image (C : Call_Id) return String;
+         --  Convert call C to string usable for debugging
 
          -----------
          -- Image --
          -----------
 
-         function Image (G : Global_Id) return String is
-           ((if Is_Heap_Entity (G.Entity)
-             then Name_Of_Heap_Variable
-             else Full_Source_Name (G.Entity)) &
-            "'" & Global_Kind'Image (G.Kind));
+         function Image (C : Call_Id) return String is
+           (Full_Source_Name (C.Entity) & "'" & Call_Kind'Image (C.Kind));
 
       --  Start of processing for Connect
 
@@ -438,11 +355,11 @@ package body Flow_Generated_Globals.Partial is
          for Target_Entity of Targets loop
             for Edge of Edges loop
                declare
-                  Source : constant Global_Id :=
+                  Source : constant Call_Id :=
                     (Entity => E,
                      Kind   => Edge.Source);
 
-                  Target : constant Global_Id :=
+                  Target : constant Call_Id :=
                     (Entity => Target_Entity,
                      Kind   => Edge.Target);
 
@@ -467,84 +384,21 @@ package body Flow_Generated_Globals.Partial is
    --  Start of processing for Add
 
    begin
-      for Kind in Proof_Ins .. Outputs loop
+      for Kind in Call_Kind loop
          Global_Graph.Include_Vertex ((Kind => Kind, Entity => E));
       end loop;
 
-      if E = Analyzed
-        or else Parent_Scope (E) = Analyzed
-      then
-         if (case Ekind (E) is
-                when E_Package
-                =>
-                   Present (Get_Pragma (E, Pragma_Initializes)),
-
-                when Entry_Kind
-                   | E_Function
-                   | E_Procedure
-                   | E_Task_Type
-                =>
-                   Entity_In_SPARK (E)
-                   and then not Entity_Body_In_SPARK (E)
-                   and then Has_User_Supplied_Globals (E),
-
-                when E_Protected_Type
-                =>
-                   Meaningless,
-
-                when others => raise Program_Error)
-         then
-            Debug ("Adding to graph (down-projected):", E);
-            Add_Down_Projected_Globals (Contr.Proper);
-         else
-            Debug ("Adding to graph (refined):", E);
-            Add_Refined_Globals (Contr.Refined);
-         end if;
-      else
-         Debug ("Adding to graph (proper):", E);
-         Add_Down_Projected_Globals (Contr.Proper);
-      end if;
-
-      --  For proof calls connect the caller's Proof_Ins vertex to the callee's
-      --  Proof_Ins and Inputs (because Inputs of the callee are now accessed
-      --  as Proof_Ins). Do nothing for outputs, because they cannot be access
-      --  from a proof context.
-      Connect (Contr.Proof_Calls,
-               (1 => (Source => Proof_Ins, Target => Proof_Ins),
-                2 => (Source => Proof_Ins, Target => Inputs),
-                3 => (Source => Outputs,   Target => Outputs)));
-
-      --  For definite calls connect the caller's Proof_Ins, Inputs and Outputs
-      --  vertices respectively to the callee's Proof_Ins, Inputs and Outputs
-      --  vertices.
       Connect (Contr.Definite_Calls,
-               (1 => (Source => Proof_Ins, Target => Proof_Ins),
-                2 => (Source => Inputs,    Target => Inputs),
-                3 => (Source => Outputs,   Target => Outputs)));
-
-      --  For conditional calls do as above, but also connect the caller's
-      --  Inputs vertices to the callee's Outputs vertices. This models code
-      --  like:
-      --
-      --     if Condition then
-      --        Output := ...;
-      --     end if;
-      --
-      --  as:
-      --
-      --     if Condition then
-      --        Output := ...;
-      --     else
-      --        Output := Output;  <<< artificial read of Output
-      --     end if;
-      --
-      --  which adds an dummy assignment.
+               (1 => (Source => C_Definite,    Target => C_Definite)));
 
       Connect (Contr.Conditional_Calls,
-               (1 => (Source => Proof_Ins, Target => Proof_Ins),
-                2 => (Source => Inputs,    Target => Inputs),
-                3 => (Source => Inputs,    Target => Outputs),
-                4 => (Source => Outputs,   Target => Outputs)));
+               (1 => (Source => C_Conditional, Target => C_Definite),
+                2 => (Source => C_Conditional, Target => C_Conditional)));
+
+      Connect (Contr.Proof_Calls,
+               (1 => (Source => C_Proof,       Target => C_Definite),
+                2 => (Source => C_Proof,       Target => C_Conditional),
+                3 => (Source => C_Proof,       Target => C_Proof)));
 
       for Child of Scope_Map (E) loop
          Add (Child, Analyzed, Contracts, Global_Graph);
@@ -1253,11 +1107,16 @@ package body Flow_Generated_Globals.Partial is
 
       use Global_Graphs;
 
+      function Callee_Globals (E : Entity_Id) return Global_Nodes
+      with Pre => Is_Caller_Entity (E);
+
       function Collect
         (E            : Entity_Id;
          Global_Graph : Global_Graphs.Graph)
          return Global_Nodes
       with Pre => Is_Caller_Entity (E);
+
+      function Down_Project (G : Global_Nodes) return Global_Nodes;
 
       function Is_Fully_Written
         (State   : Entity_Id;
@@ -1275,6 +1134,65 @@ package body Flow_Generated_Globals.Partial is
 
       use type Node_Sets.Set; --  to make "or" operator visible
 
+      --------------------
+      -- Callee_Globals --
+      --------------------
+
+      function Callee_Globals (E : Entity_Id) return Global_Nodes is
+         Callee_Contr_Position : constant Entity_Contract_Maps.Cursor :=
+           Contracts.Find (E);
+         --  ??? check if E is within Analyzed
+
+      begin
+         if Entity_Contract_Maps.Has_Element (Callee_Contr_Position) then
+            declare
+               Callee_Contr : Contract renames
+                 Contracts (Callee_Contr_Position);
+            begin
+               if E = Analyzed
+                 or else Parent_Scope (E) = Analyzed
+               then
+                  if (case Ekind (E) is
+                         when E_Package
+                           =>
+                              Present (Get_Pragma (E, Pragma_Initializes)),
+
+                         when Entry_Kind
+                           | E_Function
+                             | E_Procedure
+                               | E_Task_Type
+                      =>
+                         Entity_In_SPARK (E)
+                      and then not Entity_Body_In_SPARK (E)
+                      and then Has_User_Supplied_Globals (E),
+
+                         when E_Protected_Type
+                           =>
+                              Meaningless,
+
+                         when others => raise Program_Error)
+                  then
+                     Debug ("Folding with down-projected globals:", E);
+                     return Down_Project (Callee_Contr.Proper);
+                  else
+                     Debug ("Folding with refined globals:", E);
+                     return Callee_Contr.Refined;
+                  end if;
+               else
+                  Debug ("Folding with proper globals:", E);
+                  return Down_Project (Callee_Contr.Proper);
+               end if;
+            end;
+         else
+            Debug ("Ignoring remote call to ", E);
+            declare
+               Empty_Globals : Global_Nodes;
+            begin
+               return Empty_Globals;
+            end;
+         end if;
+      end Callee_Globals;
+
       -------------
       -- Collect --
       -------------
@@ -1286,8 +1204,8 @@ package body Flow_Generated_Globals.Partial is
       is
 
          procedure Collect
-           (Kind :     Global_Kind;
-            Vars : out Node_Sets.Set);
+           (Kind    :     Call_Kind;
+            Callees : out Node_Sets.Set);
          --  Collect variables referenced from the Folded'Kind vertex into Vars
 
          -------------
@@ -1295,51 +1213,149 @@ package body Flow_Generated_Globals.Partial is
          -------------
 
          procedure Collect
-           (Kind :     Global_Kind;
-            Vars : out Node_Sets.Set)
+           (Kind    :     Call_Kind;
+            Callees : out Node_Sets.Set)
          is
-            Calls : constant Global_Graphs.Vertex_Id :=
-              Global_Graph.Get_Vertex (Global_Id'(Kind   => Kind,
-                                                  Entity => E));
+            Caller : constant Global_Graphs.Vertex_Id :=
+              Global_Graph.Get_Vertex (Call_Id'(Kind   => Kind,
+                                                Entity => E));
 
          begin
-            Vars.Clear;
+            Callees.Clear;
 
-            for V of Global_Graph.Get_Collection (Calls, Out_Neighbours)
-            loop
-               declare
-                  Global : Global_Id renames Global_Graph.Get_Key (V);
-               begin
-                  if Global.Kind = Variable then
-                     Vars.Insert (Global.Entity);
-                  end if;
-               end;
-            end loop;
+            if Caller /= Global_Graphs.Null_Vertex then
+               for V of Global_Graph.Get_Collection (Caller, Out_Neighbours)
+               loop
+                  declare
+                     Callee : Call_Id renames Global_Graph.Get_Key (V);
+                  begin
+                     --  ??? if Calle.Kind = C_Definite ?
+                     Callees.Include (Callee.Entity);
+                  end;
+               end loop;
+            end if;
          end Collect;
 
          --  Local variables
 
-         Result : Global_Nodes;
+         Result_Proof_Ins : Node_Sets.Set := Contr.Refined.Proof_Ins;
+         Result_Inputs    : Node_Sets.Set := Contr.Refined.Inputs;
+         Result_Outputs   : Node_Sets.Set := Contr.Refined.Outputs;
+         --  ??? by keeping these separate we don't have to care about
+         --  maintaing the Global_Nodes invariant.
 
       --  Start of processing for Collect
 
       begin
-         Collect (Proof_Ins, Result.Proof_Ins);
-         Collect (Inputs,    Result.Inputs);
-         Collect (Outputs,   Result.Outputs);
+         --  First collect callees
+         Collect (C_Definite,    Contr.Definite_Calls);
+         Collect (C_Conditional, Contr.Conditional_Calls);
+         Collect (C_Proof,       Contr.Proof_Calls);
 
-         Result.Proof_Ins.Difference (Result.Inputs);
+         --  Then complete their categorization
+         Contr.Conditional_Calls.Difference (Contr.Definite_Calls);
+
+         Contr.Proof_Calls.Difference (Contr.Definite_Calls);
+         Contr.Proof_Calls.Difference (Contr.Conditional_Calls);
+
+         --  Now collect their globals
+
+         for Callee of Contr.Definite_Calls loop
+            declare
+               G : constant Global_Nodes := Callee_Globals (Callee);
+            begin
+               Result_Proof_Ins.Union (G.Proof_Ins);
+               Result_Inputs.Union (G.Inputs);
+               Result_Outputs.Union (G.Outputs);
+            end;
+         end loop;
+
+         for Callee of Contr.Proof_Calls loop
+            declare
+               G : constant Global_Nodes := Callee_Globals (Callee);
+            begin
+               Result_Proof_Ins.Union (G.Proof_Ins);
+               Result_Proof_Ins.Union (G.Inputs);
+               Result_Outputs.Union (G.Outputs);
+            end;
+         end loop;
+
+         --  For conditional calls do as above, but also connect the caller's
+         --  Inputs vertices to the callee's Outputs vertices. This models code
+         --  like:
+         --
+         --     if Condition then
+         --        Output := ...;
+         --     end if;
+         --
+         --  as:
+         --
+         --     if Condition then
+         --        Output := ...;
+         --     else
+         --        Output := Output;  <<< artificial read of Output
+         --     end if;
+         --
+         --  which adds an dummy assignment.
+
+         for Callee of Contr.Conditional_Calls loop
+            declare
+               G : constant Global_Nodes := Callee_Globals (Callee);
+            begin
+               Result_Proof_Ins.Union (G.Proof_Ins);
+               Result_Inputs.Union (G.Inputs);
+               Result_Inputs.Union (G.Outputs);
+               Result_Outputs.Union (G.Outputs);
+            end;
+         end loop;
+
+         --  Post-processing
+         Result_Proof_Ins.Difference (Result_Inputs);
 
          declare
             Proof_Ins_Outs : constant Node_Sets.Set :=
-              Result.Proof_Ins and Result.Outputs;
+              Result_Proof_Ins and Result_Outputs;
          begin
-            Result.Proof_Ins.Difference (Proof_Ins_Outs);
-            Result.Inputs.Union (Proof_Ins_Outs);
+            Result_Proof_Ins.Difference (Proof_Ins_Outs);
+            Result_Inputs.Union (Proof_Ins_Outs);
          end;
 
-         return Result;
+         return (Proof_Ins => Result_Proof_Ins,
+                 Inputs    => Result_Inputs,
+                 Outputs   => Result_Outputs);
       end Collect;
+
+      ------------------
+      -- Down_Project --
+      ------------------
+
+      function Down_Project (G : Global_Nodes) return Global_Nodes is
+
+         Analyzed_View : constant Flow_Scope :=
+           (case Ekind (Analyzed) is
+               when Entry_Kind
+                  | E_Function
+                  | E_Procedure
+                  | E_Protected_Type
+                  | E_Task_Type
+               =>
+                  Get_Flow_Scope (Get_Body (Analyzed)),
+
+               when E_Package
+               =>
+                 (Analyzed, Body_Part),
+
+               when others
+               =>
+                 raise Program_Error);
+
+      begin
+         return
+           Global_Nodes'
+             (Proof_Ins => Down_Project (G.Proof_Ins, Analyzed_View),
+              Inputs    => Down_Project (G.Inputs,    Analyzed_View),
+              Outputs   => Down_Project (G.Outputs,   Analyzed_View));
+      end Down_Project;
 
       ----------------------
       -- Is_Fully_Written --
@@ -1422,16 +1438,10 @@ package body Flow_Generated_Globals.Partial is
 
          --  Handle package Initializes aspect
          if Ekind (Folded) = E_Package then
-            for Definite_Call of Contr.Definite_Calls loop
-               declare
-                  G : constant Global_Nodes :=
-                    Collect (Definite_Call, Global_Graph);
-               begin
-                  Contr.Initializes.Union
-                    ((G.Outputs - G.Inputs) and (Contr.Local_Variables or
-                                                 Contr.Local_Ghost_Variables));
-               end;
-            end loop;
+            Contr.Initializes.Union
+              ((Contr.Refined.Outputs - Contr.Refined.Inputs)
+                  and
+               (Contr.Local_Variables or Contr.Local_Ghost_Variables));
 
             Up_Project (Contr.Initializes, Projected, Partial);
 
@@ -1443,8 +1453,6 @@ package body Flow_Generated_Globals.Partial is
             Contr.Initializes := Projected;
          end if;
       end;
-
-      Recategorize_Calls (Contracts, Contr);
 
       Filter_Local (Analyzed, Contr.Proof_Calls);
       Filter_Local (Analyzed, Contr.Definite_Calls);
@@ -1615,17 +1623,17 @@ package body Flow_Generated_Globals.Partial is
       end if;
    end Generate_Contracts;
 
-   -----------------
-   -- Global_Hash --
-   -----------------
+   ----------
+   -- Hash --
+   ----------
 
-   function Global_Hash (G : Global_Id) return Ada.Containers.Hash_Type
+   function Hash (C : Call_Id) return Ada.Containers.Hash_Type
    is
       use type Ada.Containers.Hash_Type;
    begin
-      return 13 * Ada.Containers.Hash_Type (G.Entity) +
-             17 * Ada.Containers.Hash_Type (Global_Kind'Pos (G.Kind));
-   end Global_Hash;
+      return 13 * Ada.Containers.Hash_Type (C.Entity) +
+             17 * Ada.Containers.Hash_Type (Call_Kind'Pos (C.Kind));
+   end Hash;
 
    ---------------
    -- Is_Callee --
@@ -1688,27 +1696,17 @@ package body Flow_Generated_Globals.Partial is
         (G : Graph;
          V : Vertex_Id) return Node_Display_Info
       is
-         G_Id  : constant Global_Id := G.Get_Key (V);
-
-         Shape : constant Node_Shape_T := (if G_Id.Kind = Variable
-                                           then Shape_Oval
-                                           else Shape_Box);
+         C_Id  : constant Call_Id := G.Get_Key (V);
 
          Label : constant String :=
-           (if Is_Heap_Entity (G_Id.Entity)
-            then "__HEAP"
-            else Full_Source_Name (G_Id.Entity) &
-                 (case G_Id.Kind is
-                     when Proof_Ins      => "'Proof_Ins",
-                     when Inputs         => "'Inputs",
-                     when Outputs        => "'Outputs",
-                     when Variable       => ""));
+           (Full_Source_Name (C_Id.Entity) & "'" &
+            Call_Kind'Image (C_Id.Kind));
 
          Rv : constant Node_Display_Info := Node_Display_Info'
-           (Show        => False
-                           or else G.In_Neighbour_Count (V) > 0
-                           or else G.Out_Neighbour_Count (V) > 0,
-            Shape       => Shape,
+           (Show        => G.In_Neighbour_Count (V) > 0
+                             or else
+                           G.Out_Neighbour_Count (V) > 0,
+            Shape       => Shape_Oval,
             Colour      => Null_Unbounded_String,
             Fill_Colour => Null_Unbounded_String,
             Label       => To_Unbounded_String (Label));
@@ -1749,217 +1747,6 @@ package body Flow_Generated_Globals.Partial is
             Edge_Info => EDI'Access);
       end if;
    end Print_Partial_Graph;
-
-   ------------------------
-   -- Recategorize_Calls --
-   ------------------------
-
-   procedure Recategorize_Calls
-     (Contracts :        Entity_Contract_Maps.Map;
-      Contr     : in out Contract)
-   is
-      use type Node_Sets.Set;
-
-      RProof, RConditional, RDefinite : Node_Sets.Set;
-   begin
-      --  Categorize calls: PROOF CALLS
-
-      declare
-         type Calls is record
-            Proof, Other : Node_Sets.Set;
-         end record;
-
-         Todo : Calls := (Proof => Contr.Proof_Calls,
-                          Other => Contr.Conditional_Calls or
-                                   Contr.Definite_Calls);
-
-         Done : Calls;
-
-      begin
-         loop
-            if not Todo.Proof.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Proof.First_Element;
-
-                  Inserted : Boolean;
-                  Unused   : Node_Sets.Cursor;
-                  C        : Entity_Contract_Maps.Cursor;
-
-               begin
-                  Done.Proof.Insert (New_Item  => Pick,
-                                     Position  => Unused,
-                                     Inserted  => Inserted);
-
-                  if Inserted then
-                     C := Contracts.Find (Pick);
-                     if Entity_Contract_Maps.Has_Element (C) then
-
-                        Todo.Proof.Union
-                          ((Contracts (C).Proof_Calls or
-                            Contracts (C).Conditional_Calls or
-                            Contracts (C).Definite_Calls)
-                           - Done.Proof);
-                     end if;
-                  end if;
-
-                  Todo.Proof.Delete (Pick);
-               end;
-            elsif not Todo.Other.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Other.First_Element;
-
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-               begin
-                  Done.Other.Insert (Pick);
-
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Proof.Union (Contracts (C).Proof_Calls -
-                                       Done.Proof);
-
-                     Todo.Other.Union ((Contracts (C).Conditional_Calls or
-                                        Contracts (C).Definite_Calls)
-                                       - Done.Other);
-                  end if;
-
-                  Todo.Other.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert (Contr.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
-
-         RProof := Done.Proof;
-      end;
-
-      --  Categorize calls: CONDITIONAL CALLS
-
-      declare
-         type Calls is record
-            Conditional, Definite : Node_Sets.Set;
-         end record;
-
-         Todo : Calls := (Contr.Conditional_Calls,
-                          Contr.Definite_Calls);
-
-         Done : Calls;
-
-      begin
-         loop
-            if not Todo.Conditional.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Conditional.First_Element;
-
-                  Inserted : Boolean;
-                  Unused   : Node_Sets.Cursor;
-                  C        : Entity_Contract_Maps.Cursor;
-
-               begin
-                  Done.Conditional.Insert (New_Item  => Pick,
-                                           Position  => Unused,
-                                           Inserted  => Inserted);
-
-                  if Inserted then
-                     C := Contracts.Find (Pick);
-                     if Entity_Contract_Maps.Has_Element (C) then
-
-                        Todo.Conditional.Union
-                          ((Contracts (C).Conditional_Calls or
-                            Contracts (C).Definite_Calls)
-                           - Done.Conditional);
-                     end if;
-                  end if;
-
-                  Todo.Conditional.Delete (Pick);
-               end;
-            elsif not Todo.Definite.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Definite.First_Element;
-
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-               begin
-                  Done.Definite.Insert (Pick);
-
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Conditional.Union (Contracts (C).Conditional_Calls -
-                                             Done.Conditional);
-
-                     Todo.Definite.Union (Contracts (C).Definite_Calls -
-                                          Done.Definite);
-                  end if;
-
-                  Todo.Definite.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert
-           (Contr.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
-
-         RConditional := Done.Conditional;
-      end;
-
-      --  Categorize calls: Definite CALLS
-
-      declare
-         Todo : Node_Sets.Set := Contr.Definite_Calls;
-         Done : Node_Sets.Set;
-
-      begin
-         loop
-            if not Todo.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.First_Element;
-
-                  Inserted : Boolean;
-                  Unused   : Node_Sets.Cursor;
-                  C        : Entity_Contract_Maps.Cursor;
-
-               begin
-                  Done.Insert (New_Item  => Pick,
-                               Position  => Unused,
-                               Inserted  => Inserted);
-
-                  if Inserted then
-                     C := Contracts.Find (Pick);
-                     if Entity_Contract_Maps.Has_Element (C) then
-
-                        Todo.Union (Contracts (C).Definite_Calls - Done);
-                     end if;
-                  end if;
-
-                  Todo.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert
-           (Contr.Definite_Calls.Is_Subset (Of_Set => Done));
-
-         RDefinite := Done;
-      end;
-
-      RProof.Difference (RConditional);
-      RProof.Difference (RDefinite);
-
-      RConditional.Difference (RDefinite);
-
-      Node_Sets.Move (Target => Contr.Proof_Calls,
-                      Source => RProof);
-
-      Node_Sets.Move (Target => Contr.Conditional_Calls,
-                      Source => RConditional);
-
-      Node_Sets.Move (Target => Contr.Definite_Calls,
-                      Source => RDefinite);
-   end Recategorize_Calls;
 
    --------------
    -- To_Names --
