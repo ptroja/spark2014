@@ -124,7 +124,8 @@ package body Flow.Analysis.Sanity is
             Err_Desc : String;
             Err_Node : Node_Id);
          --  Issues an error for any member of the Flow_Ids which does NOT
-         --  denote a constant, a bound or a discriminant.
+         --  denote a constant, a bound or a discriminant (of an enclosing
+         --  concurrent type).
 
          function Check_Name (N : Node_Id) return Traverse_Result;
          --  Checks indexed components and slices which are part of a Name
@@ -141,12 +142,14 @@ package body Flow.Analysis.Sanity is
          is
          begin
             for F of Flow_Ids loop
-               if F.Kind in Direct_Mapping | Record_Field
+               if (F.Kind in Direct_Mapping | Record_Field
                  and then Nkind (Get_Direct_Mapping_Id (F)) in N_Entity
                  and then not (Is_Constant_Object (Get_Direct_Mapping_Id (F))
                                  or else Is_Bound (F)
                                  or else Ekind (Get_Direct_Mapping_Id (F)) =
-                                           E_Discriminant)
+                                           E_Discriminant))
+                 or else
+                   F.Kind = Magic_String
                then
                   Error_Msg_Flow
                     (FA       => FA,
