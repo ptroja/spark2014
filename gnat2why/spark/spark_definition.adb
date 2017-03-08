@@ -169,9 +169,9 @@ package body SPARK_Definition is
 
    Entity_List : Node_Lists.List;
    --  List of entities that should be translated to Why3. This list contains
-   --  both entities in SPARK and entities not in SPARK. VCs should be
-   --  generated only for entities in the current unit. Each entity may
-   --  be attached to a declaration or not (for Itypes).
+   --  non-package entities in SPARK and packages with explicit SPARK_Mode =>
+   --  On. VCs should be generated only for entities in the current unit. Each
+   --  entity may be attached to a declaration or not (for Itypes).
 
    Entity_Set : Node_Sets.Set;
    --  Set of all entities marked so far. It contains entities from both the
@@ -4508,28 +4508,32 @@ package body SPARK_Definition is
 
       if Violation_Detected then
          Entities_In_SPARK.Delete (E);
-      end if;
 
-      --  Add entity to appropriate list. Entities from packages with external
-      --  axioms are handled by a specific mechanism and thus should not be
-      --  translated.
-      if not Entity_In_Ext_Axioms (E) then
-         --  Concurrent types need to go before their visible declarations
-         --  (because declarations reference them as implicit inputs).
-         if Ekind (E) in E_Protected_Type | E_Task_Type then
+      --  Otherwise, add entity to appropriate list
 
-            pragma Assert
-              (Current_Concurrent_Insert_Pos /= Node_Lists.No_Element);
+      else
+         --  Entities from packages with external axioms are handled by a
+         --  specific mechanism and thus should not be translated.
+         if not Entity_In_Ext_Axioms (E) then
 
-            Node_Lists.Next (Current_Concurrent_Insert_Pos);
+            --  Concurrent types go before their visible declarations (because
+            --  declarations reference them as implicit inputs).
+            if Ekind (E) in E_Protected_Type | E_Task_Type then
 
-            --  If there were no entities defined within concurrent types then
-            --  Next will advance the cursor to No_Element and Insert will be
-            --  equivalent to Append. This is precisely what we need.
-            Entity_List.Insert (Before   => Current_Concurrent_Insert_Pos,
-                                New_Item => E);
-         else
-            Entity_List.Append (E);
+               pragma Assert
+                 (Current_Concurrent_Insert_Pos /= Node_Lists.No_Element);
+
+               Node_Lists.Next (Current_Concurrent_Insert_Pos);
+
+               --  If there were no entities defined within concurrent types
+               --  then Next will advance the cursor to No_Element and Insert
+               --  will be equivalent to Append. This is precisely what we
+               --  need.
+               Entity_List.Insert (Before   => Current_Concurrent_Insert_Pos,
+                                   New_Item => E);
+            else
+               Entity_List.Append (E);
+            end if;
          end if;
       end if;
 
@@ -4860,10 +4864,10 @@ package body SPARK_Definition is
 
             Current_SPARK_Pragma := SPARK_Pragma (Id);
 
-            --  Record the package as an entity to translate, unless it is
-            --  explicitly marked with SPARK_Mode => Off.
+            --  Record the package as an entity to translate iff it is
+            --  explicitly marked with SPARK_Mode => On.
 
-            if not SPARK_Pragma_Is (Opt.Off) then
+            if SPARK_Pragma_Is (Opt.On) then
                Entity_List.Append (Id);
             end if;
 
