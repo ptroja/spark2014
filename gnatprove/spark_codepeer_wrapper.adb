@@ -40,7 +40,7 @@ with GNATCOLL.Projects;          use GNATCOLL.Projects;
 
 with String_Utils;               use String_Utils;
 
---  Wrapper around the codepeer_be executable for SPARK integration.
+--  Wrapper around the codepeer_be executable for SPARK integration
 
 procedure SPARK_CodePeer_Wrapper is
 
@@ -61,11 +61,11 @@ procedure SPARK_CodePeer_Wrapper is
 
    Ext_Vars     : String_Lists.List;
 
-   procedure Error (Message : String);
-   --  Display error message and exit the application.
+   procedure Error (Message : String) with No_Return;
+   --  Display error message and exit the application
 
    function Locate_Exec (Exec : String) return String_Access;
-   --  Locate Exec either from argv(0) or from the PATH.
+   --  Locate Exec either from argv(0) or from the PATH
 
    procedure Parse_Command_Line;
    --  Parse command line arguments
@@ -74,8 +74,8 @@ procedure SPARK_CodePeer_Wrapper is
    --  Parse .gpr project file into tree
 
    procedure Create_Library
-     (Tree      : Project_Tree;
-      Library   : out String_Access);
+     (Tree    :     Project_Tree;
+      Library : out String_Access);
    --  Create library file from project Tree.
    --  Set name of library file created in Library
 
@@ -97,8 +97,8 @@ procedure SPARK_CodePeer_Wrapper is
    --  Free all elements of Args
 
    function Object_Directory (Project : Project_Type) return Virtual_File;
-   --  Return object dir associated with Project, or the project's directory
-   --  if none.
+   --  Return object dir associated with Project, or the project's directory if
+   --  none.
 
    function Output_Directory (Project : Project_Type) return Virtual_File;
    --  Return directory which is used by CodePeer to output results
@@ -109,10 +109,11 @@ procedure SPARK_CodePeer_Wrapper is
    function Library_File_Name
      (Project : Project_Type;
       Suffix  : String := "") return Virtual_File;
-   --  Return the name of a CodePeer library file, for the given Project
-   --  and additional optional suffix
+   --  Return the name of a CodePeer library file, for the given Project and
+   --  additional optional suffix.
 
-   procedure Display_Help;
+   procedure Display_Help with No_Return;
+   --  Display help message and exit
 
    -----------
    -- Error --
@@ -135,10 +136,10 @@ procedure SPARK_CodePeer_Wrapper is
    end Generic_Append_Arg;
 
    Args_Padding : constant := 128;
-   --  Plenty of room for all the extra switches.
+   --  Plenty of room for extra switches
 
-   Count         : constant Natural := Argument_Count;
-   Msg_Args      : Argument_List (1 .. Count + Args_Padding);
+   Count    : constant Natural := Argument_Count;
+   Msg_Args : Argument_List (1 .. Count + Args_Padding);
 
    ----------------------
    -- Object_Directory --
@@ -228,7 +229,7 @@ procedure SPARK_CodePeer_Wrapper is
       Proj_Env.Register_Default_Language_Extension ("C", ".h", ".c");
       for Ext of Ext_Vars loop
          declare
-            Equal : constant Integer := Ada.Strings.Fixed.Index (Ext, "=");
+            Equal : constant Natural := Ada.Strings.Fixed.Index (Ext, "=");
          begin
             Proj_Env.Change_Environment
               (Ext (Ext'First + 2 .. Equal - 1),
@@ -299,7 +300,7 @@ procedure SPARK_CodePeer_Wrapper is
       Status := Local_Spawn ("codepeer-gprbuild", Args (1 .. Arg_Count));
       Free (Args);
 
-      --  If gprbuild failed, something unexpected happened, exit immediately.
+      --  If gprbuild failed, something unexpected happened, exit immediately
 
       if Status /= 0 then
          OS_Exit (Status);
@@ -333,13 +334,13 @@ procedure SPARK_CodePeer_Wrapper is
    --------------------
 
    procedure Create_Library
-     (Tree      : Project_Tree;
-      Library   : out String_Access)
+     (Tree    :     Project_Tree;
+      Library : out String_Access)
    is
       procedure Generate_Source_Directive
         (Lib_File : Ada.Text_IO.File_Type;
          Scil_Dir : GNATCOLL.VFS.Virtual_File);
-      --  Generates Source directive for the specific SCIL directory.
+      --  Generates Source directive for the specific SCIL directory
 
       -------------------------------
       -- Generate_Source_Directive --
@@ -358,6 +359,8 @@ procedure SPARK_CodePeer_Wrapper is
 
       F       : Ada.Text_IO.File_Type;
       Project : Project_Type;
+
+   --  Start of processing for Generate_Source_Directive
 
    begin
       Project := Tree.Root_Project;
@@ -416,7 +419,7 @@ procedure SPARK_CodePeer_Wrapper is
    ------------------------
 
    procedure Parse_Command_Line is
-      Index : Natural := 1;
+      Index : Positive := 1;
    begin
       while Index <= Count loop
          declare
@@ -543,7 +546,7 @@ procedure SPARK_CodePeer_Wrapper is
    Tree   : Project_Tree;
 
 begin
-   --  Parse command line, and recognize special switches.
+   --  Parse command line, and recognize special switches
 
    Parse_Command_Line;
 
@@ -587,7 +590,7 @@ begin
       Append_Arg (Num_Procs.all);
    end if;
 
-   --  Append low level switches corresponding to the analysis requested.
+   --  Append low level switches corresponding to the analysis requested
 
    Append_Arg ("-global");
    Append_Arg ("-sa-messages");
