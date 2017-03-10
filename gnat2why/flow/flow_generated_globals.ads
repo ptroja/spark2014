@@ -136,6 +136,13 @@ package Flow_Generated_Globals is
       Inputs    : Name_Sets.Set;          --  Flow/Frontend/User
       Outputs   : Name_Sets.Set;          --  Flow/Frontend/User
    end record;
+   --  ??? add type predicate
+
+   type Call_Names is record
+      Proof_Calls       : Name_Sets.Set;  --  Flow
+      Conditional_Calls : Name_Sets.Set;  --  Flow
+      Definite_Calls    : Name_Sets.Set;  --  Flow/Frontend
+   end record;
 
    type Name_Tasking_Info is array (Tasking_Info_Kind) of Name_Sets.Set;
    --  Tasking objects accessed by a given entity
@@ -149,9 +156,7 @@ package Flow_Generated_Globals is
       Proper                : Globals;
       Refined               : Globals;
 
-      Proof_Calls           : Name_Sets.Set; --  Flow
-      Definite_Calls        : Name_Sets.Set; --  Flow
-      Conditional_Calls     : Name_Sets.Set; --  Flow/Frontend
+      Calls                 : Call_Names;
 
       Local_Variables       : Name_Sets.Set; --  Flow
       Local_Ghost_Variables : Name_Sets.Set; --  Flow

@@ -74,6 +74,12 @@ package body Flow_Generated_Globals.Partial is
    --  Returns True iff E might be called or is a package nested in an entity
    --  that might be called (and we treat its elaboration as a call).
 
+   function Scope_Truly_Within_Or_Same
+     (E, Analyzed : Entity_Id) return Boolean
+   is
+     (Is_In_Analyzed_Files (E)
+      and then Scope_Within_Or_Same (E, Analyzed))
+   with Pre => Is_In_Analyzed_Files (Analyzed);
    ----------------------
    -- Is_Caller_Entity --
    ----------------------
@@ -218,9 +224,11 @@ package body Flow_Generated_Globals.Partial is
 
    function Categorize_Calls
      (E         : Entity_Id;
+      Analyzed  : Entity_Id;
       Contracts : Entity_Contract_Maps.Map)
    return Call_Nodes
-   with Pre => Is_Caller_Entity (E);
+   with Pre => Is_Caller_Entity (E) and then
+               Scope_Truly_Within_Or_Same (E, Analyzed);
 
    function Contract_Calls (E : Entity_Id) return Node_Sets.Set
    with Pre => Ekind (E) in Entry_Kind
@@ -720,6 +728,7 @@ package body Flow_Generated_Globals.Partial is
 
    function Categorize_Calls
      (E         : Entity_Id;
+      Analyzed  : Entity_Id;
       Contracts : Entity_Contract_Maps.Map)
       return Call_Nodes
    is
@@ -749,18 +758,22 @@ package body Flow_Generated_Globals.Partial is
                declare
                   Pick : constant Entity_Id := Todo.Proof.First_Element;
 
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-
                begin
                   Done.Proof.Insert (Pick);
 
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Proof.Union
-                       ((Contracts (C).Globals.Calls.Proof_Calls or
-                         Contracts (C).Globals.Calls.Conditional_Calls or
-                         Contracts (C).Globals.Calls.Definite_Calls)
-                        - Done.Proof);
+                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
+
+                     declare
+                        Picked : Call_Nodes renames
+                          Contracts (Pick).Globals.Calls;
+
+                     begin
+                        Todo.Proof.Union
+                          ((Picked.Proof_Calls or
+                            Picked.Conditional_Calls or
+                            Picked.Definite_Calls)
+                           - Done.Proof);
+                     end;
                   end if;
 
                   Todo.Proof.Delete (Pick);
@@ -769,19 +782,24 @@ package body Flow_Generated_Globals.Partial is
                declare
                   Pick : constant Entity_Id := Todo.Other.First_Element;
 
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
                begin
                   Done.Other.Insert (Pick);
 
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Proof.Union
-                       (Contracts (C).Globals.Calls.Proof_Calls - Done.Proof);
+                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
 
-                     Todo.Other.Union
-                       ((Contracts (C).Globals.Calls.Conditional_Calls or
-                         Contracts (C).Globals.Calls.Definite_Calls)
-                        - Done.Other);
+                     declare
+                        Picked : Call_Nodes renames
+                          Contracts (Pick).Globals.Calls;
+
+                     begin
+                        Todo.Proof.Union
+                          (Picked.Proof_Calls - Done.Proof);
+
+                        Todo.Other.Union
+                          ((Picked.Conditional_Calls or
+                            Picked.Definite_Calls)
+                           - Done.Other);
+                     end;
                   end if;
 
                   Todo.Other.Delete (Pick);
@@ -815,19 +833,19 @@ package body Flow_Generated_Globals.Partial is
                declare
                   Pick : constant Entity_Id := Todo.Conditional.First_Element;
 
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-
                begin
                   Done.Conditional.Insert (Pick);
 
-                  --  ??? Scope_Same_Or_Within (Pick, Analyzed);
-                  if Entity_Contract_Maps.Has_Element (C) then
+                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
+                     declare
+                        Picked : Call_Nodes renames
+                          Contracts (Pick).Globals.Calls;
 
-                     Todo.Conditional.Union
-                       ((Contracts (C).Globals.Calls.Conditional_Calls or
-                         Contracts (C).Globals.Calls.Definite_Calls)
-                        - Done.Conditional);
+                     begin
+                        Todo.Conditional.Union
+                          ((Picked.Conditional_Calls or Picked.Definite_Calls)
+                           - Done.Conditional);
+                     end;
                   end if;
 
                   Todo.Conditional.Delete (Pick);
@@ -836,19 +854,22 @@ package body Flow_Generated_Globals.Partial is
                declare
                   Pick : constant Entity_Id := Todo.Definite.First_Element;
 
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
                begin
                   Done.Definite.Insert (Pick);
 
-                  if Entity_Contract_Maps.Has_Element (C) then
-                     Todo.Conditional.Union
-                       (Contracts (C).Globals.Calls.Conditional_Calls -
-                            Done.Conditional);
+                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
 
-                     Todo.Definite.Union
-                       (Contracts (C).Globals.Calls.Definite_Calls -
-                            Done.Definite);
+                     declare
+                        Picked : Call_Nodes renames
+                          Contracts (Pick).Globals.Calls;
+
+                     begin
+                        Todo.Conditional.Union
+                          (Picked.Conditional_Calls - Done.Conditional);
+
+                        Todo.Definite.Union
+                          (Picked.Definite_Calls - Done.Definite);
+                     end;
                   end if;
 
                   Todo.Definite.Delete (Pick);
@@ -877,17 +898,13 @@ package body Flow_Generated_Globals.Partial is
                declare
                   Pick : constant Entity_Id := Todo.First_Element;
 
-                  C : constant Entity_Contract_Maps.Cursor :=
-                    Contracts.Find (Pick);
-
                begin
                   Done.Insert (Pick);
 
-                  --  ??? Same_Scope_Or_Within (Pick, Analyzed)
-                  if Entity_Contract_Maps.Has_Element (C) then
+                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
 
                      Todo.Union
-                       (Contracts (C).Globals.Calls.Definite_Calls - Done);
+                       (Contracts (Pick).Globals.Calls.Definite_Calls - Done);
                   end if;
 
                   Todo.Delete (Pick);
@@ -1298,7 +1315,7 @@ package body Flow_Generated_Globals.Partial is
 
       begin
          --  First collect callees
-         Result.Calls := Categorize_Calls (E, Contracts);
+         Result.Calls := Categorize_Calls (E, Analyzed, Contracts);
 
          --  Now collect their globals
 
@@ -1797,12 +1814,13 @@ package body Flow_Generated_Globals.Partial is
                (Proof_Ins => To_Name_Set (Contr.Globals.Refined.Proof_Ins),
                 Inputs    => To_Name_Set (Contr.Globals.Refined.Inputs),
                 Outputs   => To_Name_Set (Contr.Globals.Refined.Outputs)),
-             Proof_Calls           =>
-               To_Name_Set (Contr.Globals.Calls.Proof_Calls),
-             Definite_Calls        =>
-               To_Name_Set (Contr.Globals.Calls.Definite_Calls),
-             Conditional_Calls     =>
-               To_Name_Set (Contr.Globals.Calls.Conditional_Calls),
+             Calls                 =>
+               (Proof_Calls       =>
+                  To_Name_Set (Contr.Globals.Calls.Proof_Calls),
+                Definite_Calls    =>
+                  To_Name_Set (Contr.Globals.Calls.Definite_Calls),
+                Conditional_Calls =>
+                  To_Name_Set (Contr.Globals.Calls.Conditional_Calls)),
              Local_Variables       => To_Name_Set (Contr.Local_Variables),
              Local_Ghost_Variables => To_Name_Set
                                         (Contr.Local_Ghost_Variables),

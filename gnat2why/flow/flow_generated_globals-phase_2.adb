@@ -333,6 +333,18 @@ package body Flow_Generated_Globals.Phase_2 is
    --  ??? we should just trust in the Initializes aspect given by the user
    --  and not re-generate it.
 
+   function Categorize_Calls
+     (EN       : Entity_Name;
+      Analyzed : Entity_Name;
+      Info     : Phase_1_Info_Maps.Map)
+      return Call_Names;
+   pragma Unreferenced (Categorize_Calls);
+
+   function Scope_Within_Or_Same (Scope1, Scope2 : Entity_Name)
+                                              return Boolean;
+   --  Equivalent of Sem_Util.Scope_Within_Or_Same for entity names;
+   --  ??? see Scope_Truly_Within_Or_Same and make this one work for subunits
+
    function GG_Encapsulating_State (EN : Entity_Name) return Any_Entity_Name;
    --  Returns the Entity_Name of the directly encapsulating state. If one does
    --  not exist it returns Null_Entity_Name.
@@ -1817,21 +1829,22 @@ package body Flow_Generated_Globals.Phase_2 is
 
             --  For proof calls connect the subprogram's Proof_Ins vertex to
             --  the callee's Proof_Ins vertices.
-            Connect (Info.Proof_Calls, (1 => (Proof_Ins, Proof_Ins),
-                                        2 => (Proof_Ins, Inputs),
-                                        3 => (Outputs,   Outputs)));
+            Connect (Info.Calls.Proof_Calls,
+                     (1 => (Proof_Ins, Proof_Ins),
+                      2 => (Proof_Ins, Inputs),
+                      3 => (Outputs,   Outputs)));
 
             --  For definite calls connect the subprogram's Proof_Ins, Ins and
             --  Outs vertices respectively to the callee's Proof_Ins, Ins and
             --  Outs vertices.
-            Connect (Info.Definite_Calls,
+            Connect (Info.Calls.Definite_Calls,
                      (1 => (Proof_Ins, Proof_Ins),
                       2 => (Inputs,    Inputs),
                       3 => (Outputs,   Outputs)));
 
             --  For conditional calls do as above, but also add an edge from
             --  the subprogram's Ins vertex to the callee's Outs vertex.
-            Connect (Info.Conditional_Calls,
+            Connect (Info.Calls.Conditional_Calls,
                      (1 => (Proof_Ins, Proof_Ins),
                       2 => (Inputs,    Inputs),
                       3 => (Inputs,    Outputs),
@@ -1865,9 +1878,9 @@ package body Flow_Generated_Globals.Phase_2 is
                         Add_To_Graph (G, Picked_Info, Refined => False);
 
                         Remains.Union
-                          ((Picked_Info.Proof_Calls or
-                            Picked_Info.Conditional_Calls or
-                            Picked_Info.Definite_Calls) - Visited);
+                          ((Picked_Info.Calls.Proof_Calls or
+                            Picked_Info.Calls.Conditional_Calls or
+                            Picked_Info.Calls.Definite_Calls) - Visited);
                      end;
                   else
                      pragma Assert (Match (Internal, To_String (Pick)));
@@ -1909,9 +1922,9 @@ package body Flow_Generated_Globals.Phase_2 is
                Add_To_Graph (G, Analyzed_Info, Refined => True);
 
                Add_To_Graph (G    => G,
-                             Todo => Analyzed_Info.Proof_Calls or
-                                     Analyzed_Info.Conditional_Calls or
-                                     Analyzed_Info.Definite_Calls,
+                             Todo => Analyzed_Info.Calls.Proof_Calls or
+                                     Analyzed_Info.Calls.Conditional_Calls or
+                                     Analyzed_Info.Calls.Definite_Calls,
                              Done => Name_Sets.To_Set (Analyzed_Info.Name));
 
                if Debug_Print_Global_Graph then
@@ -2259,10 +2272,6 @@ package body Flow_Generated_Globals.Phase_2 is
                function Scope (EN : Entity_Name) return Entity_Name;
                --  Equivalent of Sinfo.Scope for entity names
 
-               function Scope_Within_Or_Same (Scope1, Scope2 : Entity_Name)
-                                              return Boolean;
-               --  Equivalent of Sem_Util.Scope_Within_Or_Same for entity names
-
                -----------
                -- Scope --
                -----------
@@ -2280,28 +2289,8 @@ package body Flow_Generated_Globals.Phase_2 is
                   --  ??? this is hackish, I know!
 
                begin
-                  return To_Entity_Name (S (1 .. J - 1));
+                  return To_Entity_Name (S (S'First .. J - 1));
                end Scope;
-
-               --------------------------
-               -- Scope_Within_Or_Same --
-               --------------------------
-
-               function Scope_Within_Or_Same (Scope1, Scope2 : Entity_Name)
-                                              return Boolean
-               is
-                  Scope1_Str : constant String := To_String (Scope1);
-                  Scope2_Str : constant String := To_String (Scope2);
-
-               begin
-                  return
-                    Scope1_Str'Length >= Scope2_Str'Length
-                      and then
-                        Scope1_Str
-                          (Scope2_Str'First ..
-                           Scope2_Str'First + Scope2_Str'Length - 1) =
-                        Scope2_Str;
-               end Scope_Within_Or_Same;
 
             --  Start of processing for Up_Project
 
@@ -3100,9 +3089,9 @@ package body Flow_Generated_Globals.Phase_2 is
       Print_Name_Set ("Proof_Ins            :", Info.Proper.Proof_Ins);
       Print_Name_Set ("Inputs               :", Info.Proper.Inputs);
       Print_Name_Set ("Outputs              :", Info.Proper.Outputs);
-      Print_Name_Set ("Proof calls          :", Info.Proof_Calls);
-      Print_Name_Set ("Definite calls       :", Info.Definite_Calls);
-      Print_Name_Set ("Conditional calls    :", Info.Conditional_Calls);
+      Print_Name_Set ("Proof calls          :", Info.Calls.Proof_Calls);
+      Print_Name_Set ("Definite calls       :", Info.Calls.Definite_Calls);
+      Print_Name_Set ("Conditional calls    :", Info.Calls.Conditional_Calls);
       Print_Name_Set ("Local variables      :", Info.Local_Variables);
       Print_Name_Set ("Local ghost variables:", Info.Local_Ghost_Variables);
 
@@ -3161,5 +3150,225 @@ package body Flow_Generated_Globals.Phase_2 is
          Outdent;
       end loop;
    end Print_Tasking_Info_Bag;
+
+   ----------------------
+   -- Categorize_Calls --
+   ----------------------
+
+   function Categorize_Calls
+     (EN       : Entity_Name;
+      Analyzed : Entity_Name;
+      Info     : Phase_1_Info_Maps.Map)
+      return Call_Names
+   is
+      Original : Call_Names renames Info (EN).Calls;
+
+      RProof, RConditional, RDefinite : Name_Sets.Set;
+
+   begin
+      --  Categorize calls: PROOF CALLS
+
+      declare
+         type Calls is record
+            Proof, Other : Name_Sets.Set;
+         end record;
+
+         Todo : Calls := (Proof => Original.Proof_Calls,
+                          Other => Original.Conditional_Calls or
+                                   Original.Definite_Calls);
+
+         Done : Calls;
+
+      begin
+         loop
+            if not Todo.Proof.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.Proof.First);
+
+               begin
+                  Done.Proof.Insert (Pick);
+
+                  if Scope_Within_Or_Same (Pick, Analyzed) then
+                     declare
+                        Picked_Calls : Call_Names renames Info (Pick).Calls;
+
+                     begin
+                        Todo.Proof.Union
+                          ((Picked_Calls.Proof_Calls or
+                               Picked_Calls.Conditional_Calls or
+                                 Picked_Calls.Definite_Calls)
+                           - Done.Proof);
+                     end;
+                  end if;
+
+                  Todo.Proof.Delete (Pick);
+               end;
+            elsif not Todo.Other.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.Other.First);
+
+               begin
+                  Done.Other.Insert (Pick);
+
+                  if Scope_Within_Or_Same (Pick, Analyzed) then
+                     declare
+                        Picked_Calls : Call_Names renames Info (Pick).Calls;
+
+                     begin
+                        Todo.Proof.Union
+                          (Picked_Calls.Proof_Calls - Done.Proof);
+
+                        Todo.Other.Union
+                          ((Picked_Calls.Conditional_Calls or
+                               Picked_Calls.Definite_Calls)
+                           - Done.Other);
+                     end;
+                  end if;
+
+                  Todo.Other.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert (Original.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
+
+         Name_Sets.Move (Target => RProof,
+                         Source => Done.Proof);
+      end;
+
+      --  Categorize calls: CONDITIONAL CALLS
+
+      declare
+         type Calls is record
+            Conditional, Definite : Name_Sets.Set;
+         end record;
+
+         Todo : Calls := (Conditional => Original.Conditional_Calls,
+                          Definite    => Original.Definite_Calls);
+
+         Done : Calls;
+
+      begin
+         loop
+            if not Todo.Conditional.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.Conditional.First);
+
+               begin
+                  Done.Conditional.Insert (Pick);
+
+                  if Scope_Within_Or_Same (Pick, Analyzed) then
+                     declare
+                        Picked_Calls : Call_Names renames Info (Pick).Calls;
+
+                     begin
+                        Todo.Conditional.Union
+                          ((Picked_Calls.Conditional_Calls or
+                               Picked_Calls.Definite_Calls)
+                           - Done.Conditional);
+                     end;
+                  end if;
+
+                  Todo.Conditional.Delete (Pick);
+               end;
+            elsif not Todo.Definite.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.Definite.First);
+
+               begin
+                  Done.Definite.Insert (Pick);
+
+                  if Scope_Within_Or_Same (Pick, Analyzed) then
+                     declare
+                        Picked_Calls : Call_Names renames Info (Pick).Calls;
+
+                     begin
+                        Todo.Conditional.Union
+                          (Picked_Calls.Conditional_Calls - Done.Conditional);
+
+                        Todo.Definite.Union
+                          (Picked_Calls.Definite_Calls - Done.Definite);
+                     end;
+                  end if;
+
+                  Todo.Definite.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert
+           (Original.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
+
+         Name_Sets.Move (Target => RConditional,
+                         Source => Done.Conditional);
+      end;
+
+      --  Categorize calls: Definite CALLS
+
+      declare
+         Todo : Name_Sets.Set := Original.Definite_Calls;
+         Done : Name_Sets.Set;
+
+      begin
+         loop
+            if not Todo.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.First);
+
+               begin
+                  Done.Insert (Pick);
+
+                  if Scope_Within_Or_Same (Pick, Analyzed) then
+                     Todo.Union (Info (Pick).Calls.Definite_Calls - Done);
+                  end if;
+
+                  Todo.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert (Original.Definite_Calls.Is_Subset (Of_Set => Done));
+
+         Name_Sets.Move (Target => RDefinite,
+                         Source => Done);
+      end;
+
+      --  Overlapped conditional and definite calls are intentionally different
+      --  than in slicing.
+      return (Proof_Calls       => RProof - RConditional - RDefinite,
+              Conditional_Calls => RConditional,
+              Definite_Calls    => RDefinite - RConditional);
+   end Categorize_Calls;
+
+   --------------------------
+   -- Scope_Within_Or_Same --
+   --------------------------
+
+   function Scope_Within_Or_Same (Scope1, Scope2 : Entity_Name)
+                                              return Boolean
+   is
+      Scope1_Str : constant String := To_String (Scope1);
+      Scope2_Str : constant String := To_String (Scope2);
+
+   begin
+      return
+        Scope1_Str'Length >= Scope2_Str'Length
+        and then
+          Scope1_Str
+            (Scope2_Str'First ..
+               Scope2_Str'First + Scope2_Str'Length - 1) =
+          Scope2_Str;
+   end Scope_Within_Or_Same;
 
 end Flow_Generated_Globals.Phase_2;
