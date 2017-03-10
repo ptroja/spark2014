@@ -1302,7 +1302,7 @@ package body Flow_Generated_Globals.Partial is
 
          --  Now collect their globals
 
-         for Callee of Original.Calls.Definite_Calls loop
+         for Callee of Result.Calls.Definite_Calls loop
             declare
                G : constant Global_Nodes := Callee_Globals (Callee);
             begin
@@ -1312,7 +1312,7 @@ package body Flow_Generated_Globals.Partial is
             end;
          end loop;
 
-         for Callee of Original.Calls.Proof_Calls loop
+         for Callee of Result.Calls.Proof_Calls loop
             declare
                G : constant Global_Nodes := Callee_Globals (Callee);
             begin
@@ -1340,7 +1340,7 @@ package body Flow_Generated_Globals.Partial is
          --
          --  which adds an dummy assignment.
 
-         for Callee of Original.Calls.Conditional_Calls loop
+         for Callee of Result.Calls.Conditional_Calls loop
             declare
                G : constant Global_Nodes := Callee_Globals (Callee);
             begin
