@@ -1,0 +1,1 @@
+ALL XFAIL GG: globals needed for functions from other compilation unit
