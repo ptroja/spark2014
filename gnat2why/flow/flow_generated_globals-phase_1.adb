@@ -200,9 +200,9 @@ package body Flow_Generated_Globals.Phase_1 is
       --  disjoint, so it is more efficient to process them separately instead
       --  of doing an expensive union to have a single procedure call.
       if not GI.Local then
-         Process_Volatiles_And_States (GI.Proper.Proof_Ins);
-         Process_Volatiles_And_States (GI.Proper.Inputs);
-         Process_Volatiles_And_States (GI.Proper.Outputs);
+         Process_Volatiles_And_States (GI.Globals.Proper.Proof_Ins);
+         Process_Volatiles_And_States (GI.Globals.Proper.Inputs);
+         Process_Volatiles_And_States (GI.Globals.Proper.Outputs);
          Process_Volatiles_And_States (GI.Local_Variables,
                                        Local_Vars => True);
          Process_Volatiles_And_States (GI.Local_Ghost_Variables,

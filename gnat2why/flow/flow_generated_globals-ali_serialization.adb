@@ -138,7 +138,10 @@ package body Flow_Generated_Globals.ALI_Serialization is
       procedure Serialize is new Serialisation.Serialize_Discrete
         (T => Globals_Origin_T);
 
-      procedure Serialize (A : in out Archive; G : in out Globals);
+      procedure Serialize
+        (A     : in out Archive;
+         G     : in out Global_Names;
+         Label : String);
 
       procedure Serialize (A : in out Archive; V : in out Name_Tasking_Info);
 
@@ -146,11 +149,15 @@ package body Flow_Generated_Globals.ALI_Serialization is
       -- Serialize --
       ---------------
 
-      procedure Serialize (A : in out Archive; G : in out Globals) is
+      procedure Serialize
+        (A     : in out Archive;
+         G     : in out Global_Names;
+         Label : String)
+      is
       begin
-         Serialize (A, G.Proof_Ins, "proof_in");
-         Serialize (A, G.Inputs,    "input");
-         Serialize (A, G.Outputs,   "output");
+         Serialize (A, G.Proof_Ins, Label & "proof_in");
+         Serialize (A, G.Inputs,    Label & "input");
+         Serialize (A, G.Outputs,   Label & "output");
       end Serialize;
 
       procedure Serialize (A : in out Archive; V : in out Name_Tasking_Info) is
@@ -167,17 +174,17 @@ package body Flow_Generated_Globals.ALI_Serialization is
       Serialize (A, V.Local, "local");
       Serialize (A, V.Kind);
       Serialize (A, V.Origin);
-      Serialize (A, V.Proper);
-      Serialize (A, V.Refined);
-      Serialize (A, V.Calls.Proof_Calls,       "calls_proof");
-      Serialize (A, V.Calls.Definite_Calls,    "calls");
-      Serialize (A, V.Calls.Conditional_Calls, "calls_conditional");
+      Serialize (A, V.Globals.Proper,  "proper_");  -- ??? replace _ with :
+      Serialize (A, V.Globals.Refined, "refined_");
+      if V.Kind = E_Package then
+         Serialize (A, V.Globals.Initializes, "initializes");
+      end if;
+      Serialize (A, V.Globals.Calls.Proof_Calls,       "calls_proof");
+      Serialize (A, V.Globals.Calls.Definite_Calls,    "calls");
+      Serialize (A, V.Globals.Calls.Conditional_Calls, "calls_conditional");
       Serialize (A, V.Local_Variables,         "local_var");
       Serialize (A, V.Local_Ghost_Variables,   "local_ghost");
       Serialize (A, V.Local_Subprograms,       "local_sub");
-      if V.Kind = E_Package then
-         Serialize (A, V.Local_Definite_Writes, "local_init");
-      end if;
 
       if V.Kind in Entry_Kind
                  | E_Function

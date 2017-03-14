@@ -131,8 +131,9 @@ package body Flow_Generated_Globals.Partial is
       Conditional_Calls : Node_Sets.Set;
       Definite_Calls    : Node_Sets.Set;
    end record;
+   --  ??? add some predicates
 
-   type Global_Contract is record
+   type Flow_Nodes is record
       Proper  : Global_Nodes;
       Refined : Global_Nodes;
 
@@ -144,7 +145,7 @@ package body Flow_Generated_Globals.Partial is
    --  Information needed to synthesize the the Global contract
 
    type Contract is record
-      Globals : Global_Contract;
+      Globals : Flow_Nodes;
 
       Direct_Calls      : Node_Sets.Set; -- ??? should be union of the above
       --  For compatibility with old GG (e.g. assumptions)
@@ -181,7 +182,7 @@ package body Flow_Generated_Globals.Partial is
 
    package Entity_Global_Contract_Maps is new Ada.Containers.Hashed_Maps
      (Key_Type        => Entity_Id,
-      Element_Type    => Global_Contract,
+      Element_Type    => Flow_Nodes,
       Hash            => Node_Hash,
       Equivalent_Keys => "=");
 
@@ -432,7 +433,7 @@ package body Flow_Generated_Globals.Partial is
                declare
                   Updated : Contract renames
                     Contracts (Entity_Global_Contract_Maps.Key (Patch));
-                  Update : Global_Contract renames
+                  Update : Flow_Nodes renames
                     Entity_Global_Contract_Maps.Element (Patch);
                begin
                   Updated.Globals := Update;
@@ -1215,7 +1216,7 @@ package body Flow_Generated_Globals.Partial is
 
       use type Node_Sets.Set; --  to make "or" operator visible
 
-      Original : Global_Contract renames Full_Contract.Globals;
+      Original : Flow_Nodes renames Full_Contract.Globals;
 
       Local_Pkg_Variables : constant Node_Sets.Set :=
         Full_Contract.Local_Variables or Full_Contract.Local_Ghost_Variables;
@@ -1224,7 +1225,7 @@ package body Flow_Generated_Globals.Partial is
       function Callee_Globals (E : Entity_Id) return Global_Nodes
       with Pre => Is_Caller_Entity (E);
 
-      function Collect (E : Entity_Id) return Global_Contract
+      function Collect (E : Entity_Id) return Flow_Nodes
       with Pre => Is_Caller_Entity (E);
 
       function Down_Project (G : Global_Nodes) return Global_Nodes;
@@ -1255,7 +1256,7 @@ package body Flow_Generated_Globals.Partial is
       begin
          if Entity_Contract_Maps.Has_Element (Callee_Contr_Position) then
             declare
-               Callee_Globals : Global_Contract renames
+               Callee_Globals : Flow_Nodes renames
                  Contracts (Callee_Contr_Position).Globals;
             begin
                if E = Analyzed
@@ -1292,11 +1293,7 @@ package body Flow_Generated_Globals.Partial is
             end;
          else
             Debug ("Ignoring remote call to", E);
-            declare
-               Empty_Globals : Global_Nodes;
-            begin
-               return Empty_Globals;
-            end;
+            return Global_Nodes'(others => <>);
          end if;
       end Callee_Globals;
 
@@ -1304,14 +1301,14 @@ package body Flow_Generated_Globals.Partial is
       -- Collect --
       -------------
 
-      function Collect (E : Entity_Id) return Global_Contract is
+      function Collect (E : Entity_Id) return Flow_Nodes is
          Result_Proof_Ins : Node_Sets.Set := Original.Refined.Proof_Ins;
          Result_Inputs    : Node_Sets.Set := Original.Refined.Inputs;
          Result_Outputs   : Node_Sets.Set := Original.Refined.Outputs;
          --  ??? by keeping these separate we don't have to care about
          --  maintaing the Global_Nodes invariant.
 
-         Result : Global_Contract;
+         Result : Flow_Nodes;
 
       begin
          --  First collect callees
@@ -1472,7 +1469,7 @@ package body Flow_Generated_Globals.Partial is
 
       --  Local variables
 
-      Update : Global_Contract;
+      Update : Flow_Nodes;
 
    --  Start of processing for Fold
 
@@ -1806,26 +1803,30 @@ package body Flow_Generated_Globals.Partial is
              Local                 => not Is_Globally_Visible (E),
              Kind                  => Ekind (E),
              Origin                => Origin_Flow,      --  ??? dummy
-             Proper                =>
-               (Proof_Ins => To_Name_Set (Contr.Globals.Proper.Proof_Ins),
-                Inputs    => To_Name_Set (Contr.Globals.Proper.Inputs),
-                Outputs   => To_Name_Set (Contr.Globals.Proper.Outputs)),
-             Refined               =>
-               (Proof_Ins => To_Name_Set (Contr.Globals.Refined.Proof_Ins),
-                Inputs    => To_Name_Set (Contr.Globals.Refined.Inputs),
-                Outputs   => To_Name_Set (Contr.Globals.Refined.Outputs)),
-             Calls                 =>
-               (Proof_Calls       =>
-                  To_Name_Set (Contr.Globals.Calls.Proof_Calls),
-                Definite_Calls    =>
-                  To_Name_Set (Contr.Globals.Calls.Definite_Calls),
-                Conditional_Calls =>
-                  To_Name_Set (Contr.Globals.Calls.Conditional_Calls)),
+             Globals               =>
+               (Proper  =>
+                  (Proof_Ins => To_Name_Set (Contr.Globals.Proper.Proof_Ins),
+                   Inputs    => To_Name_Set (Contr.Globals.Proper.Inputs),
+                   Outputs   => To_Name_Set (Contr.Globals.Proper.Outputs)),
+                Refined =>
+                  (Proof_Ins => To_Name_Set (Contr.Globals.Refined.Proof_Ins),
+                   Inputs    => To_Name_Set (Contr.Globals.Refined.Inputs),
+                   Outputs   => To_Name_Set (Contr.Globals.Refined.Outputs)),
+                Initializes =>
+                  To_Name_Set (Contr.Globals.Initializes),
+                Calls   =>
+                  (Proof_Calls       =>
+                     To_Name_Set (Contr.Globals.Calls.Proof_Calls),
+                   Definite_Calls    =>
+                     To_Name_Set (Contr.Globals.Calls.Definite_Calls),
+                   Conditional_Calls =>
+                     To_Name_Set (Contr.Globals.Calls.Conditional_Calls))),
+
              Local_Variables       => To_Name_Set (Contr.Local_Variables),
              Local_Ghost_Variables => To_Name_Set
-                                        (Contr.Local_Ghost_Variables),
+               (Contr.Local_Ghost_Variables),
+
              Local_Subprograms     => <>,
-             Local_Definite_Writes => To_Name_Set (Contr.Globals.Initializes),
              Has_Terminate         => Contr.Has_Terminate,
              Recursive             => Contr.Recursive,
              Nonreturning          => Contr.Nonreturning,

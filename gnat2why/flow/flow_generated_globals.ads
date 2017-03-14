@@ -131,7 +131,7 @@ package Flow_Generated_Globals is
    --  Flow     : Produced using flow analysis
    --  Frontend : Produced from the XREF sections of the ALI files
 
-   type Globals is record
+   type Global_Names is record
       Proof_Ins : Name_Sets.Set;          --  Flow/User
       Inputs    : Name_Sets.Set;          --  Flow/Frontend/User
       Outputs   : Name_Sets.Set;          --  Flow/Frontend/User
@@ -144,6 +144,17 @@ package Flow_Generated_Globals is
       Definite_Calls    : Name_Sets.Set;  --  Flow/Frontend
    end record;
 
+   type Flow_Names is record
+      Proper  : Global_Names;
+      Refined : Global_Names;
+
+      Initializes : Name_Sets.Set;
+      --  Only meaningful for packages
+
+      Calls : Call_Names;
+   end record;
+   --  Information needed to synthesize the the Global contract
+
    type Name_Tasking_Info is array (Tasking_Info_Kind) of Name_Sets.Set;
    --  Tasking objects accessed by a given entity
 
@@ -153,15 +164,11 @@ package Flow_Generated_Globals is
       Kind                  : Entity_Kind;
       Origin                : Globals_Origin_T;
 
-      Proper                : Globals;
-      Refined               : Globals;
-
-      Calls                 : Call_Names;
+      Globals               : Flow_Names;
 
       Local_Variables       : Name_Sets.Set; --  Flow
       Local_Ghost_Variables : Name_Sets.Set; --  Flow
       Local_Subprograms     : Name_Sets.Set; --  Flow
-      Local_Definite_Writes : Name_Sets.Set; --  Flow (only for packages)
 
       Tasking               : Name_Tasking_Info;
 
