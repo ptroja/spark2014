@@ -598,6 +598,7 @@ package body Configuration is
 
       begin
          Set_Path_From_Gnatls (Proj_Env.all, "gnatls", GNAT_Version);
+         Free (GNAT_Version);
          Set_Object_Subdir (Proj_Env.all, Subdir_Name);
          Proj_Env.Register_Default_Language_Extension ("C", ".h", ".c");
          declare
@@ -688,12 +689,31 @@ package body Configuration is
       -----------------
 
       procedure Postprocess is
+         function On_Path (Exec : String) return Boolean;
+         --  Return True iff Exec is present on PATH
+
+         -------------
+         -- On_Path --
+         -------------
+
+         function On_Path (Exec : String) return Boolean is
+            Location : String_Access :=
+              GNAT.OS_Lib.Locate_Exec_On_Path (Exec);
+
+            Present : constant Boolean := Location /= null;
+
+         begin
+            Free (Location);
+            return Present;
+         end On_Path;
+
+      --  Start of processing for Postprocess
+
       begin
          Sanity_Checking;
-         File_System.Install.Z3_Present :=
-           GNAT.OS_Lib.Locate_Exec_On_Path ("z3") /= null;
-         File_System.Install.CVC4_Present :=
-           GNAT.OS_Lib.Locate_Exec_On_Path ("cvc4") /= null;
+
+         File_System.Install.Z3_Present   := On_Path ("z3");
+         File_System.Install.CVC4_Present := On_Path ("cvc4");
 
          Verbose := CL_Switches.V;
          Force   := CL_Switches.F;
@@ -1220,13 +1240,13 @@ package body Configuration is
 
       Set_Usage
         (First_Config,
-         Usage     => Usage_Message,
-         Help_Msg  => Help_Message);
+         Usage    => Usage_Message,
+         Help_Msg => Help_Message);
 
       Set_Usage
         (Config,
-         Usage     => Usage_Message,
-         Help_Msg  => Help_Message);
+         Usage    => Usage_Message,
+         Help_Msg => Help_Message);
 
       --  If no arguments have been given, print help message and exit
 
@@ -1286,6 +1306,8 @@ package body Configuration is
       Getopt (First_Config,
               Callback    => Handle_Project_Loading_Switches'Access,
               Concatenate => False);
+
+      Free (First_Config);
 
       if Version then
          Ada.Text_IO.Put_Line (SPARK2014_Version_String);
@@ -1540,6 +1562,10 @@ package body Configuration is
                     Concatenate => False);
          end if;
 
+         --  Release copies of command line arguments; they were already parsed
+         --  twice and are no longer needed.
+         Free (Com_Lin);
+
          --  After the call to Init, the object directory includes the
          --  sub-directory "gnatprove" set through Set_Object_Subdir.
          Main_Subdir := new String'(Proj_Type.Artifacts_Dir.Display_Full_Name);
@@ -1576,6 +1602,8 @@ package body Configuration is
          Prepare_Prover_Lib (Config);
       end if;
       Sanitize_File_List (Tree);
+
+      Free (Config);
 
    exception
       when Invalid_Switch | Exit_From_Command_Line =>

@@ -225,6 +225,7 @@ procedure SPARK_CodePeer_Wrapper is
    begin
       Initialize (Proj_Env);
       Set_Path_From_Gnatls (Proj_Env.all, "codepeer-gnatls", GNAT_Version);
+      Free (GNAT_Version);
       Set_Object_Subdir (Proj_Env.all, +Subdir);
       Proj_Env.Register_Default_Language_Extension ("C", ".h", ".c");
       for Ext of Ext_Vars loop
@@ -247,12 +248,12 @@ procedure SPARK_CodePeer_Wrapper is
    -------------------
 
    procedure Generate_SCIL (Project : Virtual_File) is
-      Args       : Argument_List (1 .. 128);
+      Args      : Argument_List (1 .. 128);
       --  There should be as many elements in Args as there are calls to
       --  Append_Arg below. Add enough padding for future calls.
 
-      Arg_Count  : Natural := 0;
-      Status     : Integer;
+      Arg_Count : Natural := 0;
+      Status    : Integer;
 
       procedure Append_Arg is new Generic_Append_Arg (Args, Arg_Count);
    begin
@@ -453,7 +454,7 @@ procedure SPARK_CodePeer_Wrapper is
    begin
       while Index <= Count loop
          declare
-            S : constant String := Argument (Index);
+            S : String renames Argument (Index);
          begin
             if S = "-verbose" then
                Verbose := True;
@@ -502,6 +503,7 @@ procedure SPARK_CodePeer_Wrapper is
 
             elsif S = "-U" then
                Compile_All_Sources := True;
+
             elsif Starts_With (S, "-X") then
                Ext_Vars.Append (S);
 
@@ -529,8 +531,8 @@ procedure SPARK_CodePeer_Wrapper is
       if Verbose then
          Put (Exe);
 
-         for J in Args'Range loop
-            Put (" " & Args (J).all);
+         for Arg of Args loop
+            Put (" " & Arg.all);
          end loop;
 
          New_Line;
@@ -556,8 +558,8 @@ procedure SPARK_CodePeer_Wrapper is
 
    procedure Free (Args : in out Argument_List) is
    begin
-      for J in Args'Range loop
-         Free (Args (J));
+      for Arg of Args loop
+         Free (Arg);
       end loop;
    end Free;
 
