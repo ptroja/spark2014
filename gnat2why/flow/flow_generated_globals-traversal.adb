@@ -25,7 +25,6 @@ with Ada.Text_IO;
 with Nlists;                     use Nlists;
 with Sem_Util;                   use Sem_Util;
 with Sinfo;                      use Sinfo;
-with SPARK_Definition;           use SPARK_Definition;
 
 package body Flow_Generated_Globals.Traversal is
 
@@ -477,9 +476,7 @@ package body Flow_Generated_Globals.Traversal is
 
       procedure Traverse_Protected_Body (N : Node_Id) is
       begin
-         if Entity_Body_In_SPARK (Unique_Defining_Entity (N)) then
-            Traverse_Declarations_Or_Statements (Declarations (N));
-         end if;
+         Traverse_Declarations_Or_Statements (Declarations (N));
       end Traverse_Protected_Body;
 
       ------------------------------
@@ -507,12 +504,8 @@ package body Flow_Generated_Globals.Traversal is
       -- Traverse_Task_Body --
       ------------------------
 
-      procedure Traverse_Task_Body (N : Node_Id) is
-      begin
-         if Entity_Body_In_SPARK (Unique_Defining_Entity (N)) then
-            Traverse_Declarations_And_HSS (N);
-         end if;
-      end Traverse_Task_Body;
+      procedure Traverse_Task_Body (N : Node_Id) renames
+         Traverse_Declarations_And_HSS;
 
       ----------------------------------------
       -- Traverse_Visible_And_Private_Parts --
