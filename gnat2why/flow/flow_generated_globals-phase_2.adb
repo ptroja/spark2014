@@ -210,9 +210,6 @@ package body Flow_Generated_Globals.Phase_2 is
    --  Debug flags
    ----------------------------------------------------------------------
 
-   Debug_Print_Info_Sets_Read        : constant Boolean := False;
-   --  Enables printing of Subprogram_Info_Sets as read from ALI files
-
    Debug_GG_Read_Timing              : constant Boolean := False;
    --  Enables timing information for gg_read
 
@@ -232,20 +229,6 @@ package body Flow_Generated_Globals.Phase_2 is
 
    State_Abstractions : Name_Sets.Set := Name_Sets.Empty_Set;
    --  State abstractions that the GG knows of
-
-   ----------------------------------------------------------------------
-   --  Local state
-   ----------------------------------------------------------------------
-
-   type GG_Cache is record
-      Subprograms, Packages : Name_Sets.Set;
-   end record;
-
-   GG_Exists : GG_Cache;
-   --  Disjoint sets with names of subprograms (and entries and task types),
-   --  and packages for which a GG entry exists. These are random-access
-   --  equivalents with names from sequential-access Subprogram_Info_List and
-   --  Package_Info_List.
 
    ----------------------------------------------------------------------
    --  Initializes information
@@ -268,11 +251,6 @@ package body Flow_Generated_Globals.Phase_2 is
 
    Initialized_Vars_And_States : Name_Sets.Set;
    --  Variables and state abstractions know to be initialized
-
-   Package_To_Locals_Map : Name_Graphs.Map;  --  ??? REMOVE
-   --  package -> {local variables}
-   --
-   --  This maps packages to their local variables
 
    ----------------------------------------------------------------------
    --  Volatile information
@@ -298,13 +276,6 @@ package body Flow_Generated_Globals.Phase_2 is
 
    Phase_1_Info : Phase_1_Info_Maps.Map;
    --  Information read from ALI files
-
-   Remote_Packages : Name_Sets.Set;
-   --  Visible packages from other compilation units whose Initializes aspect
-   --  decides which variables are safe to be used from the current compilation
-   --  unit.
-   --  ??? we should just trust in the Initializes aspect given by the user
-   --  and not re-generate it.
 
    function Categorize_Calls
      (EN        : Entity_Name;
@@ -377,17 +348,11 @@ package body Flow_Generated_Globals.Phase_2 is
    procedure Print_Tasking_Info_Bag (P : Phase);
    --  Display the tasking-related information
 
-   procedure Print_Global_Phase_1_Info (Info : Partial_Contract);
-   --  Prints all global related info of an entity
-
    procedure Print_Generated_Initializes_Aspects;
    --  Prints all the generated initializes aspects
 
    procedure Print_Name_Set (Header : String; Set : Name_Sets.Set);
    --  Print Header followed by elements of Set
-
-   procedure Print_ALI_File_Info (Subprograms : Partial_Contract_Lists.List);
-   --  Print info collected from the ALI files
 
    ---------------------
    -- Generated_Calls --
@@ -639,16 +604,20 @@ package body Flow_Generated_Globals.Phase_2 is
    -- GG_Get_Local_Variables --
    ----------------------------
 
-   function GG_Get_Local_Variables (E : Entity_Id) return Name_Sets.Set
-   is
-      EN : constant Entity_Name := To_Entity_Name (E);
-      --  Package entity name
+   function GG_Get_Local_Variables (E : Entity_Id) return Name_Sets.Set is
+      C : constant Phase_1_Info_Maps.Cursor :=
+        Phase_1_Info.Find (To_Entity_Name (E));
 
    begin
-      return
-        (if GG_Exists.Packages.Contains (EN)
-         then Package_To_Locals_Map (EN)
-         else Name_Sets.Empty_Set);
+      if Phase_1_Info_Maps.Has_Element (C) then
+         declare
+            Info : Partial_Contract renames Phase_1_Info (C);
+         begin
+            return Info.Local_Variables or Info.Local_Ghost_Variables;
+         end;
+      else
+         return Name_Sets.Empty_Set;
+      end if;
    end GG_Get_Local_Variables;
 
    -------------------
@@ -778,14 +747,6 @@ package body Flow_Generated_Globals.Phase_2 is
    -------------
 
    procedure GG_Read (GNAT_Root : Node_Id) is
-      Subprogram_Info_List : Partial_Contract_Lists.List;
-      --  Information about subprograms from the "generated globals" algorithm
-      --  ??? REMOVE
-
-      Package_Info_List : Partial_Contract_Lists.List;
-      --  Information about packages from the "generated globals" algorithm
-      --  ??? REMOVE
-
       Timing : Time_Token;
       --  In case we print timing information
 
@@ -1268,6 +1229,8 @@ package body Flow_Generated_Globals.Phase_2 is
         (ALI_File_Name     : File_Name_Type;
          For_Current_CUnit : Boolean)
       is
+         pragma Unreferenced (For_Current_CUnit);
+
          ALI_File_Name_Str : constant String :=
            Get_Name_String (Full_Lib_File_Name (ALI_File_Name));
 
@@ -1415,39 +1378,6 @@ package body Flow_Generated_Globals.Phase_2 is
                            V.The_Global_Info.Tasking (Kind));
                      end if;
                   end loop;
-
-                  case V.The_Global_Info.Kind is
-                     when Entry_Kind  |
-                          E_Function  |
-                          E_Procedure |
-                          E_Task_Type =>
-                        Subprogram_Info_List.Append (V.The_Global_Info);
-                        GG_Exists.Subprograms.Insert (V.The_Global_Info.Name);
-
-                     when E_Package =>
-                        Package_Info_List.Append (V.The_Global_Info);
-                        GG_Exists.Packages.Insert (V.The_Global_Info.Name);
-
-                        Initialized_Vars_And_States.Union
-                          (V.The_Global_Info.Globals.Initializes);
-
-                        if not For_Current_CUnit
-                          and then not V.The_Global_Info.Local
-                        then
-                           Remote_Packages.Insert (V.The_Global_Info.Name);
-                        end if;
-
-                        --  This is a convenient place to populate the
-                        --  Package_To_Locals_Map.
-                        Package_To_Locals_Map.Insert
-                          (V.The_Global_Info.Name,
-                           V.The_Global_Info.Local_Variables or
-                           V.The_Global_Info.Local_Ghost_Variables);
-
-                     when others =>
-                        raise Program_Error;
-
-                  end case;
 
                when EK_Protected_Instance =>
                   declare
@@ -1693,8 +1623,6 @@ package body Flow_Generated_Globals.Phase_2 is
 
       Note_Time ("gg_read - ALI files read");
 
-      Print_ALI_File_Info (Subprogram_Info_List);
-
       Add_Edges;
 
       Note_Time ("gg_read - edges added");
@@ -1734,23 +1662,38 @@ package body Flow_Generated_Globals.Phase_2 is
                if Ekind (E) in E_Function
                              | E_Procedure
                              | E_Task_Type
-                             | E_Package
                   and then not In_Main_Unit (E)
                then
                   declare
                      EN : constant Entity_Name := To_Entity_Name (E);
                   begin
-                     if (if Ekind (E) = E_Package
-                         then GG_Exists.Packages.Contains (EN)
-                         else GG_Exists.Subprograms.Contains (EN))
-                     then
-                        Debug ("Fold remote " & Unique_Name (E));
+                     if Phase_1_Info.Contains (EN) then
+                        Debug ("Fold translated routine " & Unique_Name (E));
                         Fold (Folded    => EN,
                               Contracts => Global_Contracts,
                               Patches   => Patches);
                      end if;
                   end;
                end if;
+            end loop;
+
+            for C in Phase_1_Info.Iterate loop
+               declare
+                  EN : Entity_Name renames Phase_1_Info_Maps.Key (C);
+                  Info : Partial_Contract renames
+                    Phase_1_Info_Maps.Element (C);
+               begin
+                  if Info.Kind = E_Package
+                    and then not (Present (Find_Entity (EN))
+                                  and then In_Main_Unit (Find_Entity (EN)))
+                    and then not Info.Local
+                  then
+                     Debug ("Fold remote package " & To_String (EN));
+                     Fold (Folded    => EN,
+                           Contracts => Global_Contracts,
+                           Patches   => Patches);
+                  end if;
+               end;
             end loop;
 
             --  ??? copy-pasted
@@ -2196,6 +2139,7 @@ package body Flow_Generated_Globals.Phase_2 is
 
             declare
                Partial, Projected : Name_Sets.Set;
+
             begin
                Up_Project (Update.Refined.Proof_Ins, Projected, Partial);
                Update.Proper.Proof_Ins := Projected or Partial;
@@ -2211,8 +2155,10 @@ package body Flow_Generated_Globals.Phase_2 is
                end loop;
                Update.Proper.Outputs := Projected or Partial;
 
+               pragma Assert (Phase_1_Info.Contains (Folded));
+
                --  Handle package Initializes aspect
-               if GG_Exists.Packages.Contains (Folded) then
+               if Phase_1_Info (Folded).Kind = E_Package then
                   declare
                      P : Partial_Contract renames Phase_1_Info (Folded);
 
@@ -2237,16 +2183,11 @@ package body Flow_Generated_Globals.Phase_2 is
                      --  Initializes aspect.
 
                   begin
-                     --  ??? Insert
-                     for Var of II.LHS loop
-                        Initialized_Vars_And_States.Include (Var);
-                     end loop;
+                     --  Invariant: LHS and LHS_Proof are disjoint and do not
+                     --  overlap with Initialized_Vars_And_States.
+                     Initialized_Vars_And_States.Union (II.LHS);
+                     Initialized_Vars_And_States.Union (II.LHS_Proof);
 
-                     for Var of II.LHS_Proof loop
-                        Initialized_Vars_And_States.Include (Var);
-                     end loop;
-
-                     --  Insert II into Initializes_Aspects_Map
                      Initializes_Aspects.Insert (P.Name, II);
                   end;
                end if;
@@ -2257,6 +2198,10 @@ package body Flow_Generated_Globals.Phase_2 is
                                           Refined     => Update.Refined,
                                           Initializes => Update.Initializes));
          end Fold;
+
+         ------------------
+         -- Fold_Subtree --
+         ------------------
 
          procedure Fold_Subtree (Folded    :        Entity_Id;
                                  Contracts :        Entity_Contract_Maps.Map;
@@ -2759,59 +2704,6 @@ package body Flow_Generated_Globals.Phase_2 is
    --  Debug output routines
    --------------------------------------------------------------------------
 
-   -------------------------
-   -- Print_ALI_File_Info --
-   -------------------------
-
-   procedure Print_ALI_File_Info (Subprograms : Partial_Contract_Lists.List) is
-   begin
-      if Debug_Print_Info_Sets_Read then
-         --  Print all GG related info gathered from the ALI files
-         for S of Subprograms loop
-            Write_Eol;
-            Print_Global_Phase_1_Info (S);
-         end loop;
-
-         for C in State_Comp_Map.Iterate loop
-            declare
-               State        : Entity_Name   renames Key (C);
-               Constituents : Name_Sets.Set renames State_Comp_Map (C);
-            begin
-               Write_Eol;
-               Write_Line ("Abstract state " & To_String (State));
-
-               Write_Line ("Constituents     :");
-               for Name of Constituents loop
-                  Write_Line ("   " & To_String (Name));
-               end loop;
-            end;
-         end loop;
-
-         --  Print all volatile info
-         Write_Eol;
-
-         Write_Line ("Async_Writers    :");
-         for Name of Async_Writers_Vars loop
-            Write_Line ("   " & To_String (Name));
-         end loop;
-
-         Write_Line ("Async_Readers    :");
-         for Name of Async_Readers_Vars loop
-            Write_Line ("   " & To_String (Name));
-         end loop;
-
-         Write_Line ("Effective_Reads  :");
-         for Name of Effective_Reads_Vars loop
-            Write_Line ("   " & To_String (Name));
-         end loop;
-
-         Write_Line ("Effective_Writes :");
-         for Name of Effective_Writes_Vars loop
-            Write_Line ("   " & To_String (Name));
-         end loop;
-      end if;
-   end Print_ALI_File_Info;
-
    -----------------------------------------
    -- Print_Generated_Initializes_Aspects --
    -----------------------------------------
@@ -2839,34 +2731,6 @@ package body Flow_Generated_Globals.Phase_2 is
          end loop;
       end if;
    end Print_Generated_Initializes_Aspects;
-
-   -------------------------------
-   -- Print_Global_Phase_1_Info --
-   -------------------------------
-
-   procedure Print_Global_Phase_1_Info (Info : Partial_Contract) is
-   begin
-      Write_Line (Entity_Kind'Image (Info.Kind) & To_String (Info.Name));
-
-      Print_Name_Set ("Proof_Ins            :",
-                      Info.Globals.Proper.Proof_Ins);
-      Print_Name_Set ("Inputs               :",
-                      Info.Globals.Proper.Inputs);
-      Print_Name_Set ("Outputs              :",
-                      Info.Globals.Proper.Outputs);
-      Print_Name_Set ("Proof calls          :",
-                      Info.Globals.Calls.Proof_Calls);
-      Print_Name_Set ("Definite calls       :",
-                      Info.Globals.Calls.Definite_Calls);
-      Print_Name_Set ("Conditional calls    :",
-                      Info.Globals.Calls.Conditional_Calls);
-      Print_Name_Set ("Local variables      :", Info.Local_Variables);
-      Print_Name_Set ("Local ghost variables:", Info.Local_Ghost_Variables);
-
-      if Info.Kind in E_Package then
-         Print_Name_Set ("Local definite writes:", Info.Globals.Initializes);
-      end if;
-   end Print_Global_Phase_1_Info;
 
    --------------------
    -- Print_Name_Set --
