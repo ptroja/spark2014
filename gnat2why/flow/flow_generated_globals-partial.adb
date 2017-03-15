@@ -80,6 +80,11 @@ package body Flow_Generated_Globals.Partial is
      (Is_In_Analyzed_Files (E)
       and then Scope_Within_Or_Same (E, Analyzed))
    with Pre => Is_In_Analyzed_Files (Analyzed);
+   --  Similar to Scope_Within_Or_Same, but returns for entities in child units
+   --  (which strictly speaking are "within" the scope of the parent packages).
+   --  This routine is only intented to be called to detect entities belonging
+   --  to scopes of the current compilation uni (hence the Pre).
+
    ----------------------
    -- Is_Caller_Entity --
    ----------------------
@@ -105,7 +110,6 @@ package body Flow_Generated_Globals.Partial is
                  | Formal_Kind
                  | E_Protected_Type
                  | E_Task_Type);
-   --  ??? it seems too risky to just use Assignable_Kind and Object_Kind
 
    ----------------------------------------------------------------------------
    --  Types
