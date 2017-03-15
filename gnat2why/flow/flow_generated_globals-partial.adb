@@ -286,6 +286,9 @@ package body Flow_Generated_Globals.Partial is
    function Frontend_Globals (E : Entity_Id) return Global_Nodes;
    --  Return globals using the frontend cross-references
 
+   function Is_Empty (G : Global_Nodes) return Boolean;
+   --  Return True iff all components of the G are empty
+
    procedure To_Node_Set
      (Names :     Name_Sets.Set;
       Nodes : out Node_Sets.Set);
@@ -944,8 +947,7 @@ package body Flow_Generated_Globals.Partial is
    function Contract_Calls (E : Entity_Id) return Node_Sets.Set is
       Calls : Node_Sets.Set;
 
-      procedure Collect_Calls (Expr : Node_Id)
-      with Global => Calls;
+      procedure Collect_Calls (Expr : Node_Id);
       --  Collect function calls in expression Expr and put them in Calls
 
       ------------------
@@ -985,8 +987,6 @@ package body Flow_Generated_Globals.Partial is
       Inputs_FS    : Flow_Id_Sets.Set;
       Outputs_FS   : Flow_Id_Sets.Set;
 
-      G : Global_Nodes;
-
    begin
       Get_Globals
         (Subprogram          => E,
@@ -999,11 +999,9 @@ package body Flow_Generated_Globals.Partial is
          Writes              => Outputs_FS,
          Use_Deduced_Globals => False);
 
-      G.Proof_Ins := To_Node_Set (Proof_Ins_FS);
-      G.Inputs    := To_Node_Set (Inputs_FS);
-      G.Outputs   := To_Node_Set (Outputs_FS);
-
-      return G;
+      return (Proof_Ins => To_Node_Set (Proof_Ins_FS),
+              Inputs    => To_Node_Set (Inputs_FS),
+              Outputs   => To_Node_Set (Outputs_FS));
    end Contract_Globals;
 
    --------------
@@ -1056,10 +1054,7 @@ package body Flow_Generated_Globals.Partial is
 
          procedure Dump (Label : String; G : Global_Nodes) is
          begin
-            if not G.Proof_Ins.Is_Empty
-              or else not G.Inputs.Is_Empty
-              or else not G.Outputs.Is_Empty
-            then
+            if not Is_Empty (G) then
                Ada.Text_IO.Put_Line (Indent & Indent & Label & " =>");
                Dump (Indent & Indent & "Proof_Ins  ", G.Proof_Ins);
                Dump (Indent & Indent & "Inputs     ", G.Inputs);
@@ -1247,7 +1242,9 @@ package body Flow_Generated_Globals.Partial is
       with Pre => Is_Caller_Entity (E);
 
       function Collect (E : Entity_Id) return Flow_Nodes
-      with Pre => Is_Caller_Entity (E);
+      with Pre => Is_Caller_Entity (E),
+           Post => Node_Sets.Is_Empty (Collect'Result.Initializes) and then
+                   Is_Empty (Collect'Result.Proper);
 
       function Down_Project (G : Global_Nodes) return Global_Nodes;
 
@@ -1326,8 +1323,9 @@ package body Flow_Generated_Globals.Partial is
          Result_Proof_Ins : Node_Sets.Set := Original.Refined.Proof_Ins;
          Result_Inputs    : Node_Sets.Set := Original.Refined.Inputs;
          Result_Outputs   : Node_Sets.Set := Original.Refined.Outputs;
-         --  ??? by keeping these separate we don't have to care about
-         --  maintaing the Global_Nodes invariant.
+         --  By keeping these sets separate we don't have to care about
+         --  maintaing the Global_Nodes invariant; it will be only checked when
+         --  returning from this routine.
 
          Result : Flow_Nodes;
 
@@ -1654,12 +1652,7 @@ package body Flow_Generated_Globals.Partial is
    -- Generate_Contracts --
    ------------------------
 
-   procedure Generate_Contracts (GNAT_Root : Node_Id)
-   is
-      Contracts : Entity_Contract_Maps.Map;
-      --  Partial information collected by analysis of inner scopes needed for
-      --  the summary of their outer scopes.
-
+   procedure Generate_Contracts (GNAT_Root : Node_Id) is
    begin
       Dump_Tree;
 
@@ -1667,38 +1660,43 @@ package body Flow_Generated_Globals.Partial is
       GG_Write_Initialize (GNAT_Root);
 
       if Present (Root_Entity) then
-
-         --  Generate Global contract
-
-         Analyze (Root_Entity, Contracts);
-
-         --  Recursive contract is used when generating the Nonreturning
-         --  contract, so it must be done first.
-
-         Generate_Recursive_Contract : declare
-            Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
-
+         declare
+            Contracts : Entity_Contract_Maps.Map;
+            --  Partial information collected by analysis of inner scopes
+            --  needed for the summary of their outer scopes.
          begin
-            Add_Recursive (Root_Entity, Contracts, Call_Graph);
 
-            Call_Graph.Close;
+            --  Generate Global contract
 
-            Fold_Recursive (Root_Entity, Call_Graph, Contracts);
-         end Generate_Recursive_Contract;
+            Analyze (Root_Entity, Contracts);
 
-         Generate_Nonreturning_Contract : declare
-            Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
+            --  Recursive contract is used when generating the Nonreturning
+            --  contract, so it must be done first.
 
-         begin
-            Add_Nonreturning (Root_Entity, Contracts, Call_Graph);
+            Generate_Recursive_Contract : declare
+               Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
 
-            Call_Graph.Close;
+            begin
+               Add_Recursive (Root_Entity, Contracts, Call_Graph);
 
-            Fold_Nonreturning (Root_Entity, Call_Graph, Contracts);
-         end Generate_Nonreturning_Contract;
+               Call_Graph.Close;
 
-         Write_Contracts_To_ALI (Root_Entity, Contracts);
+               Fold_Recursive (Root_Entity, Call_Graph, Contracts);
+            end Generate_Recursive_Contract;
 
+            Generate_Nonreturning_Contract : declare
+               Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
+
+            begin
+               Add_Nonreturning (Root_Entity, Contracts, Call_Graph);
+
+               Call_Graph.Close;
+
+               Fold_Nonreturning (Root_Entity, Call_Graph, Contracts);
+            end Generate_Nonreturning_Contract;
+
+            Write_Contracts_To_ALI (Root_Entity, Contracts);
+         end;
       end if;
 
       GG_Write_Finalize;
@@ -1714,9 +1712,7 @@ package body Flow_Generated_Globals.Partial is
    -- Is_Callee --
    ---------------
 
-   function Is_Callee (E : Entity_Id) return Boolean
-   is
-
+   function Is_Callee (E : Entity_Id) return Boolean is
    begin
       if Is_Proper_Callee (E) then
          return True;
@@ -1729,6 +1725,15 @@ package body Flow_Generated_Globals.Partial is
          end;
       end if;
    end Is_Callee;
+
+   --------------
+   -- Is_Empty --
+   --------------
+
+   function Is_Empty (G : Global_Nodes) return Boolean is
+     (G.Proof_Ins.Is_Empty and then
+      G.Inputs.Is_Empty and then
+      G.Outputs.Is_Empty);
 
    ----------------------
    -- Is_Proper_Callee --
