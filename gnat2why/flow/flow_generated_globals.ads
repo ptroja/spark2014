@@ -131,18 +131,24 @@ package Flow_Generated_Globals is
    --  Flow     : Produced using flow analysis
    --  Frontend : Produced from the XREF sections of the ALI files
 
+   function Disjoint (A, B, C : Name_Sets.Set) return Boolean;
+   --  Returns True iff sets A, B, C are mutually disjoint
+
    type Global_Names is record
       Proof_Ins : Name_Sets.Set;          --  Flow/User
       Inputs    : Name_Sets.Set;          --  Flow/Frontend/User
       Outputs   : Name_Sets.Set;          --  Flow/Frontend/User
    end record;
-   --  ??? add type predicate
+   --  ??? add some predicate
 
    type Call_Names is record
       Proof_Calls       : Name_Sets.Set;  --  Flow
       Conditional_Calls : Name_Sets.Set;  --  Flow
       Definite_Calls    : Name_Sets.Set;  --  Flow/Frontend
-   end record;
+   end record
+   with Dynamic_Predicate => Disjoint (Call_Names.Proof_Calls,
+                                       Call_Names.Conditional_Calls,
+                                       Call_Names.Definite_Calls);
 
    type Flow_Names is record
       Proper  : Global_Names;

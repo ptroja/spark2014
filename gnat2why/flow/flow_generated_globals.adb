@@ -48,6 +48,18 @@ package body Flow_Generated_Globals is
       end if;
    end Debug_Traversal;
 
+   --------------
+   -- Disjoint --
+   --------------
+
+   function Disjoint (A, B, C : Name_Sets.Set) return Boolean is
+   begin
+      return not
+        (for some E of A => B.Contains (E) or else C.Contains (E))
+          or else
+        (for some E of B => C.Contains (E));
+   end Disjoint;
+
 --  Start of processing for Flow_Generated_Globals
 
 begin

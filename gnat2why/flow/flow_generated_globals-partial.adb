@@ -57,6 +57,9 @@ package body Flow_Generated_Globals.Partial is
    --  Preliminaries
    ----------------------------------------------------------------------------
 
+   function Disjoint (A, B, C : Node_Sets.Set) return Boolean;
+   --  Returns True iff sets A, B, C are mutually disjoint
+
    function Is_Caller_Entity (E : Entity_Id) return Boolean;
    --  Returns True iff E represent an entity that is might call other routines
 
@@ -134,8 +137,10 @@ package body Flow_Generated_Globals.Partial is
       Proof_Calls       : Node_Sets.Set;
       Conditional_Calls : Node_Sets.Set;
       Definite_Calls    : Node_Sets.Set;
-   end record;
-   --  ??? add some predicates
+   end record
+   with Dynamic_Predicate => Disjoint (Call_Nodes.Proof_Calls,
+                                       Call_Nodes.Conditional_Calls,
+                                       Call_Nodes.Definite_Calls);
 
    type Flow_Nodes is record
       Proper  : Global_Nodes;
@@ -1000,6 +1005,18 @@ package body Flow_Generated_Globals.Partial is
 
       return G;
    end Contract_Globals;
+
+   --------------
+   -- Disjoint --
+   --------------
+
+   function Disjoint (A, B, C : Node_Sets.Set) return Boolean is
+   begin
+      return not
+        (for some E of A => B.Contains (E) or else C.Contains (E))
+          or else
+        (for some E of B => C.Contains (E));
+   end Disjoint;
 
    -----------
    -- Debug --
