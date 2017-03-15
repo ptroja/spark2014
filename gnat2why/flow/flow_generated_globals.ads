@@ -174,7 +174,6 @@ package Flow_Generated_Globals is
 
       Local_Variables       : Name_Sets.Set; --  Flow
       Local_Ghost_Variables : Name_Sets.Set; --  Flow
-      Local_Subprograms     : Name_Sets.Set; --  Flow
 
       Tasking               : Name_Tasking_Info;
 

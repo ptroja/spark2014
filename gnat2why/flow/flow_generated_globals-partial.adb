@@ -1847,7 +1847,6 @@ package body Flow_Generated_Globals.Partial is
              Local_Ghost_Variables => To_Name_Set
                (Contr.Local_Ghost_Variables),
 
-             Local_Subprograms     => <>,
              Has_Terminate         => Contr.Has_Terminate,
              Recursive             => Contr.Recursive,
              Nonreturning          => Contr.Nonreturning,
