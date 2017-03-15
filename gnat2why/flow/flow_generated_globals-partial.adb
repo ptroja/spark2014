@@ -1764,7 +1764,7 @@ package body Flow_Generated_Globals.Partial is
             Node : constant Entity_Id := Find_Entity (Name);
 
             --  pragma Assert (if No (Node) then Is_Heap_Variable (Name));
-            --  ??? temporarily replace prama with an error message below
+            --  ??? temporarily replace pragma with an error message below
 
          begin
             if No (Node)
