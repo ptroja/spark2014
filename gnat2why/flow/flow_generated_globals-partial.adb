@@ -538,7 +538,6 @@ package body Flow_Generated_Globals.Partial is
                Conditional_Calls     => Contr.Globals.Calls.Conditional_Calls,
                Local_Variables       => Contr.Local_Variables,
                Local_Ghost_Variables => Contr.Local_Ghost_Variables,
-               Local_Subprograms     => Unused,
                Local_Definite_Writes => Contr.Globals.Initializes);
          end;
 

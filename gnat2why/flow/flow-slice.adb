@@ -291,7 +291,6 @@ package body Flow.Slice is
       Conditional_Calls     : out Node_Sets.Set;
       Local_Variables       : out Node_Sets.Set;
       Local_Ghost_Variables : out Node_Sets.Set;
-      Local_Subprograms     : out Node_Sets.Set;
       Local_Definite_Writes : out Node_Sets.Set)
    is
       --  The "Get_" functions that follow collect nodes that are purely of the
@@ -322,9 +321,7 @@ package body Flow.Slice is
       --  Get subprograms that are definitely called
 
       procedure Get_Local_Variables_And_Subprograms
-      with Global => (Output => (Local_Variables,
-                                 Local_Ghost_Variables,
-                                 Local_Subprograms));
+      with Global => (Output => (Local_Variables, Local_Ghost_Variables));
       --  Traverses the tree under FA.Analyzed_Entity and gathers all object
       --  and subprogram declarations and puts them in Local_Variables,
       --  Local_Ghost_Variables and Local_Subprograms, respectively.
@@ -460,14 +457,12 @@ package body Flow.Slice is
                      E : constant Entity_Id := Defining_Entity (N);
                   begin
                      if E /= FA.Spec_Entity then
-                        Local_Subprograms.Insert (E);
                         return Skip;
                      end if;
                   end;
 
                when N_Subprogram_Body_Stub =>
                   if Is_Subprogram_Stub_Without_Prior_Declaration (N) then
-                     Local_Subprograms.Insert (Defining_Entity (N));
                      return Skip;
                   end if;
 
@@ -600,7 +595,6 @@ package body Flow.Slice is
       begin
          --  Initialize Local_Variables and Local_Subprograms
 
-         Local_Subprograms     := Node_Sets.Empty_Set;
          Local_Variables       := Node_Sets.Empty_Set;
          Local_Ghost_Variables := Node_Sets.Empty_Set;
 
