@@ -1668,6 +1668,8 @@ package body Flow_Generated_Globals.Partial is
 
             --  Generate Global contract
 
+            --  ??? only Gnat2Why_Args.Flow_Generate_Contracts
+            --  this doesn't work yet, because Analyze populates Contracts
             Analyze (Root_Entity, Contracts);
 
             --  Recursive contract is used when generating the Nonreturning

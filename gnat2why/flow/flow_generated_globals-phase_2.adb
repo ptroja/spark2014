@@ -38,6 +38,7 @@ with Snames;                     use Snames;
 with Call;                       use Call;
 with Debug.Timing;               use Debug.Timing;
 with Gnat2Why.Annotate;          use Gnat2Why.Annotate;
+with Gnat2Why_Args;
 with SPARK2014VSN;               use SPARK2014VSN;
 with SPARK_Frame_Conditions;     use SPARK_Frame_Conditions;
 with SPARK_Util;                 use SPARK_Util;
@@ -766,10 +767,6 @@ package body Flow_Generated_Globals.Phase_2 is
       procedure Process_Tasking_Graph;
       --  Do transitive closure of the tasking graph and put the resulting
       --  information back to bag with tasking-related information.
-
-      procedure Remove_Constants_Without_Variable_Input with
-        Pre => GG_Generated;
-      --  Removes edges leading to constants without variable input
 
       ---------------
       -- Add_Edges --
@@ -1580,36 +1577,6 @@ package body Flow_Generated_Globals.Phase_2 is
          end loop;
       end Process_Tasking_Graph;
 
-      ---------------------------------------------
-      -- Remove_Constants_Without_Variable_Input --
-      ---------------------------------------------
-
-      procedure Remove_Constants_Without_Variable_Input is
-      begin
-         --  Detect constants without variable input
-         null;
---           for Glob of Global loop
---              declare
---                 Const : constant Entity_Id := Find_Entity (Glob);
---              begin
---                 if Present (Const)
---                   and then Ekind (Const) = E_Constant
---                   and then not Has_Variable_Input (Const)
---                 then
---                    --  Remove all incoming edges
---                    declare
---                       Const_V : constant Vertex_Id :=
---                       Global_Graph.Get_Vertex (Global_Id'(Kind => Variable,
---                                                            Name => Glob));
---
---                    begin
---                       Global_Graph.Clear_Vertex (Const_V);
---                    end;
---                 end if;
---              end;
---           end loop;
-      end Remove_Constants_Without_Variable_Input;
-
    --  Start of processing for GG_Read
 
    begin
@@ -1647,6 +1614,9 @@ package body Flow_Generated_Globals.Phase_2 is
          procedure Fold_Subtree (Folded    :        Entity_Id;
                                  Contracts :        Entity_Contract_Maps.Map;
                                  Patches   : in out Global_Patch_Lists.List);
+
+         procedure Remove_Constants_Without_Variable_Input;
+         --  Removes edges leading to constants without variable input
 
          Highlighted : Any_Entity_Name := Null_Entity_Name;
 
@@ -2224,11 +2194,43 @@ package body Flow_Generated_Globals.Phase_2 is
             end if;
          end Fold_Subtree;
 
+         ---------------------------------------------
+         -- Remove_Constants_Without_Variable_Input --
+         ---------------------------------------------
+
+         procedure Remove_Constants_Without_Variable_Input is
+         begin
+            --  Detect constants without variable input
+            null;
+--              for Glob of Global loop
+--                 declare
+--                    Const : constant Entity_Id := Find_Entity (Glob);
+--                 begin
+--                    if Present (Const)
+--                      and then Ekind (Const) = E_Constant
+--                      and then not Has_Variable_Input (Const)
+--                    then
+--                       --  Remove all incoming edges
+--                       declare
+--                          Const_V : constant Vertex_Id :=
+--                        Global_Graph.Get_Vertex (Global_Id'(Kind => Variable,
+--                                                              Name => Glob));
+--
+--                       begin
+--                          Global_Graph.Clear_Vertex (Const_V);
+--                       end;
+--                    end if;
+--                 end;
+--              end loop;
+         end Remove_Constants_Without_Variable_Input;
+
       --  Start of processing for Resolve_Globals
 
       begin
          --  Library-level renamings have no root entity; ignore them
-         if Present (Root_Entity) then
+         if Present (Root_Entity)
+           and then Gnat2Why_Args.Flow_Generate_Contracts
+         then
             declare
                Patches : Global_Patch_Lists.List;
 
@@ -2253,10 +2255,13 @@ package body Flow_Generated_Globals.Phase_2 is
             end;
 
             Analyze_Remote_Calls;
-         end if;
-      end Resolve_Globals;
 
-      Note_Time ("gg_read - proof ins");
+            --  Remove edges leading to constants which do not have variable
+            --  input.
+            Remove_Constants_Without_Variable_Input;
+         end if;
+
+      end Resolve_Globals;
 
       --  Now that the Globals Graph has been generated we set GG_Generated to
       --  True. Notice that we set GG_Generated to True before we remove edges
@@ -2264,10 +2269,6 @@ package body Flow_Generated_Globals.Phase_2 is
       --  this is to use the generated globals instead of the computed globals
       --  when we call Get_Globals from within Has_Variable_Input.
       GG_Generated := True;
-
-      --  Remove edges leading to constants which do not have variable input
-      Remove_Constants_Without_Variable_Input;
-      Note_Time ("gg_read - removed nonvariable constants");
 
       --  Now that the globals are generated, we use them to also generate the
       --  initializes aspects.
