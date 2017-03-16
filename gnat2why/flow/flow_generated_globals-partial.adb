@@ -189,11 +189,13 @@ package body Flow_Generated_Globals.Partial is
    --  Containers with contracts generated based on the current compilation
    --  unit alone.
 
-   package Entity_Global_Contract_Maps is new Ada.Containers.Hashed_Maps
-     (Key_Type        => Entity_Id,
-      Element_Type    => Flow_Nodes,
-      Hash            => Node_Hash,
-      Equivalent_Keys => "=");
+   type Global_Patch is record
+      Entity  : Entity_Id;
+      Globals : Flow_Nodes;
+   end record;
+
+   package Global_Patch_Lists is new Ada.Containers.Doubly_Linked_Lists
+     (Element_Type => Global_Patch);
 
    package Call_Graphs is new Graphs
      (Vertex_Key   => Entity_Id,
@@ -267,7 +269,7 @@ package body Flow_Generated_Globals.Partial is
    procedure Fold (Folded    :        Entity_Id;
                    Analyzed  :        Entity_Id;
                    Contracts :        Entity_Contract_Maps.Map;
-                   Patches   : in out Entity_Global_Contract_Maps.Map);
+                   Patches   : in out Global_Patch_Lists.List);
    --  Main workhorse for the partial generated globals
 
    procedure Fold_Nonreturning (Folded     :        Entity_Id;
@@ -433,7 +435,7 @@ package body Flow_Generated_Globals.Partial is
         or else Has_Children
       then
          declare
-            Patches : Entity_Global_Contract_Maps.Map;
+            Patches : Global_Patch_Lists.List;
 
          begin
             Fold (Analyzed     => Analyzed,
@@ -441,14 +443,12 @@ package body Flow_Generated_Globals.Partial is
                   Contracts    => Contracts,
                   Patches      => Patches);
 
-            for Patch in Patches.Iterate loop
+            for Patch of Patches loop
                declare
-                  Updated : Contract renames
-                    Contracts (Entity_Global_Contract_Maps.Key (Patch));
-                  Update : Flow_Nodes renames
-                    Entity_Global_Contract_Maps.Element (Patch);
+                  Updated : Contract renames Contracts (Patch.Entity);
+
                begin
-                  Updated.Globals := Update;
+                  Updated.Globals := Patch.Globals;
 
                   Filter_Local (Analyzed, Updated.Remote_Calls);
                end;
@@ -1224,7 +1224,7 @@ package body Flow_Generated_Globals.Partial is
    procedure Fold (Folded    :        Entity_Id;
                    Analyzed  :        Entity_Id;
                    Contracts :        Entity_Contract_Maps.Map;
-                   Patches   : in out Entity_Global_Contract_Maps.Map)
+                   Patches   : in out Global_Patch_Lists.List)
    is
       Folded_Scope : constant Flow_Scope := Get_Flow_Scope (Folded);
 
@@ -1542,8 +1542,8 @@ package body Flow_Generated_Globals.Partial is
 
       --  Filter_Local (Analyzed, Update.Remote_Calls);
 
-      Patches.Insert (Key      => Folded,
-                      New_Item => Update);
+      Patches.Append (Global_Patch'(Entity  => Folded,
+                                    Globals => Update));
 
       for Child of Scope_Map (Folded) loop
          Fold (Child, Analyzed, Contracts, Patches);
