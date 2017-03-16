@@ -1360,6 +1360,9 @@ package body Flow_Generated_Globals.Phase_2 is
                   Volatile_Vars.Union (V.The_Effective_Writes);
 
                when EK_Globals =>
+                  --  ??? this line should be loaded only when
+                  --  For_Current_Unit or else not V.The_Global_Info.Local
+
                   --  Move global information to separate container
                   Global_Contracts.Insert
                     (Key      => V.The_Global_Info.Name,

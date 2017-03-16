@@ -1097,7 +1097,7 @@ package body Flow_Generated_Globals.Partial is
                if not Contr.Globals.Calls.Proof_Calls.Is_Empty
                  or else not Contr.Globals.Calls.Conditional_Calls.Is_Empty
                  or else not Contr.Globals.Calls.Definite_Calls.Is_Empty
-                 or else not Contr.Remote_Calls.Is_Empty
+--                   or else not Contr.Remote_Calls.Is_Empty
                then
                   Ada.Text_IO.Put_Line (Indent & Indent & "Calls:");
                   Dump (Indent & Indent & "Proof      ",
