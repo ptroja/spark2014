@@ -170,6 +170,6 @@ counterexample expected for check at arithmetic.adb:254
   trace at arithmetic.adb:252 --> C = 0
   trace at arithmetic.adb:254 --> A = -128 and B = -1
 counterexample expected for check at arithmetic.adb:293
-  trace at arithmetic.adb:291 --> IsPositive_Wrong'Result = 0 and X = 2
+  trace at arithmetic.adb:291 --> IsPositive_Wrong'Result = 1 and X = 2
   trace at arithmetic.adb:293 --> IsPositive_Wrong'Result = 1 and X = 2
   trace at arithmetic.adb:298 --> IsPositive_Wrong'Result = 1
