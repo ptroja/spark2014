@@ -138,8 +138,11 @@ package Flow_Generated_Globals is
       Proof_Ins : Name_Sets.Set;          --  Flow/User
       Inputs    : Name_Sets.Set;          --  Flow/Frontend/User
       Outputs   : Name_Sets.Set;          --  Flow/Frontend/User
-   end record;
-   --  ??? add some predicate
+   end record
+   with Dynamic_Predicate =>
+          (for all G of Global_Names.Proof_Ins =>
+              not Global_Names.Inputs.Contains (G) and then
+              not Global_Names.Outputs.Contains (G));
 
    type Call_Names is record
       Proof_Calls       : Name_Sets.Set;  --  Flow

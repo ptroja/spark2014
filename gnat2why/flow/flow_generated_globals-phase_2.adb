@@ -2141,9 +2141,6 @@ package body Flow_Generated_Globals.Phase_2 is
                Partial, Projected : Name_Sets.Set;
 
             begin
-               Up_Project (Update.Refined.Proof_Ins, Projected, Partial);
-               Update.Proper.Proof_Ins := Projected or Partial;
-
                Up_Project (Update.Refined.Inputs, Projected, Partial);
                Update.Proper.Inputs := Projected or Partial;
 
@@ -2154,6 +2151,11 @@ package body Flow_Generated_Globals.Phase_2 is
                   end if;
                end loop;
                Update.Proper.Outputs := Projected or Partial;
+
+               Up_Project (Update.Refined.Proof_Ins, Projected, Partial);
+               Update.Proper.Proof_Ins :=
+                 (Projected or Partial) -
+                 (Update.Proper.Inputs or Update.Proper.Outputs);
 
                pragma Assert (Phase_1_Info.Contains (Folded));
 
