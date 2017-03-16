@@ -598,33 +598,22 @@ package body Flow.Slice is
       --  Start of processing for Get_Local_Variables_And_Subprograms
 
       begin
-         --  Initialize Local_Variables and Local_Subprograms: collect formal
-         --  parameters of the entry/subprogram/task.
-         if FA.Kind in Kind_Subprogram | Kind_Task then
-            if Is_Ghost_Entity (FA.Analyzed_Entity) then
-               Local_Ghost_Variables := Get_Formals (FA.Analyzed_Entity);
-            else
-               Local_Variables := Get_Formals (FA.Analyzed_Entity);
-            end if;
-         end if;
+         --  Initialize Local_Variables and Local_Subprograms
 
-         Local_Subprograms := Node_Sets.Empty_Set;
+         Local_Subprograms     := Node_Sets.Empty_Set;
+         Local_Variables       := Node_Sets.Empty_Set;
+         Local_Ghost_Variables := Node_Sets.Empty_Set;
 
          --  Gather local variables and subprograms
-         case FA.Kind is
-            when Kind_Subprogram | Kind_Task =>
-               Gather_Local_Variables_And_Subprograms
-                 (Get_Body (FA.Analyzed_Entity));
+         if Ekind (FA.Spec_Entity) = E_Package then
+            Gather_Local_Variables_And_Subprograms
+              (Package_Spec (FA.Spec_Entity));
 
-            when Kind_Package | Kind_Package_Body =>
+            if FA.Kind = Kind_Package_Body then
                Gather_Local_Variables_And_Subprograms
-                 (Package_Spec (FA.Spec_Entity));
-
-               if FA.Kind = Kind_Package_Body then
-                  Gather_Local_Variables_And_Subprograms
-                    (Package_Body (FA.Analyzed_Entity));
-               end if;
-         end case;
+                 (Package_Body (FA.Analyzed_Entity));
+            end if;
+         end if;
 
       end Get_Local_Variables_And_Subprograms;
 

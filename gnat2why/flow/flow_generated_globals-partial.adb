@@ -118,14 +118,22 @@ package body Flow_Generated_Globals.Partial is
    --  Types
    ----------------------------------------------------------------------------
 
+   subtype Global_Set is Node_Sets.Set
+   with Dynamic_Predicate =>
+          (for all E of Global_Set => Is_Global_Entity (E));
+
+   subtype Callee_Set is Node_Sets.Set
+   with Dynamic_Predicate =>
+          (for all E of Callee_Set => Is_Callee (E));
+
    type No_Colours is (Dummy_Color);
    --  Dummy type inhabited by only a single value (just like a unit type in
    --  OCaml); needed for graphs with colorless edges.
 
    type Global_Nodes is record
-      Proof_Ins : Node_Sets.Set;
-      Inputs    : Node_Sets.Set;
-      Outputs   : Node_Sets.Set;
+      Proof_Ins : Global_Set;
+      Inputs    : Global_Set;
+      Outputs   : Global_Set;
    end record
    with Dynamic_Predicate =>
           (for all G of Global_Nodes.Proof_Ins =>
@@ -134,9 +142,9 @@ package body Flow_Generated_Globals.Partial is
    --  ??? should it be an array then we could remove some repeated code
 
    type Call_Nodes is record
-      Proof_Calls       : Node_Sets.Set;
-      Conditional_Calls : Node_Sets.Set;
-      Definite_Calls    : Node_Sets.Set;
+      Proof_Calls       : Callee_Set;
+      Conditional_Calls : Callee_Set;
+      Definite_Calls    : Callee_Set;
    end record
    with Dynamic_Predicate => Disjoint (Call_Nodes.Proof_Calls,
                                        Call_Nodes.Conditional_Calls,
@@ -146,7 +154,7 @@ package body Flow_Generated_Globals.Partial is
       Proper  : Global_Nodes;
       Refined : Global_Nodes;
 
-      Initializes : Node_Sets.Set;
+      Initializes : Global_Set;
       --  Only meaningful for packages
 
       Calls : Call_Nodes;
@@ -156,14 +164,14 @@ package body Flow_Generated_Globals.Partial is
    type Contract is record
       Globals : Flow_Nodes;
 
-      Direct_Calls      : Node_Sets.Set; -- ??? should be union of the above
+      Direct_Calls      : Node_Sets.Set;  --   ??? Callee_Set
       --  For compatibility with old GG (e.g. assumptions)
 
       Remote_Calls      : Node_Sets.Set;
       --  Calls to routines in other compilation units
 
-      Local_Variables       : Node_Sets.Set;
-      Local_Ghost_Variables : Node_Sets.Set;
+      Local_Variables       : Global_Set;
+      Local_Ghost_Variables : Global_Set;
       --  Only meaningful for packages
 
       Has_Terminate : Boolean;
