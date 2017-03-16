@@ -264,10 +264,10 @@ package body Flow_Generated_Globals.Partial is
    procedure Filter_Local (E : Entity_Id; Nodes : in out Node_Sets.Set);
    procedure Filter_Local (E : Entity_Id; G : in out Global_Nodes);
 
-   procedure Fold (Folded       :        Entity_Id;
-                   Analyzed     :        Entity_Id;
-                   Contracts    :        Entity_Contract_Maps.Map;
-                   Patches      : in out Entity_Global_Contract_Maps.Map);
+   procedure Fold (Folded    :        Entity_Id;
+                   Analyzed  :        Entity_Id;
+                   Contracts :        Entity_Contract_Maps.Map;
+                   Patches   : in out Entity_Global_Contract_Maps.Map);
    --  Main workhorse for the partial generated globals
 
    procedure Fold_Nonreturning (Folded     :        Entity_Id;
@@ -1221,10 +1221,10 @@ package body Flow_Generated_Globals.Partial is
    -- Fold --
    ----------
 
-   procedure Fold (Folded       :        Entity_Id;
-                   Analyzed     :        Entity_Id;
-                   Contracts    :        Entity_Contract_Maps.Map;
-                   Patches      : in out Entity_Global_Contract_Maps.Map)
+   procedure Fold (Folded    :        Entity_Id;
+                   Analyzed  :        Entity_Id;
+                   Contracts :        Entity_Contract_Maps.Map;
+                   Patches   : in out Entity_Global_Contract_Maps.Map)
    is
       Folded_Scope : constant Flow_Scope := Get_Flow_Scope (Folded);
 
