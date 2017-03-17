@@ -93,12 +93,9 @@ package body Flow_Generated_Globals.Partial is
    ----------------------
 
    function Is_Caller_Entity (E : Entity_Id) return Boolean is
-     (Ekind (E) in Entry_Kind
-                 | E_Function
-                 | E_Package
-                 | E_Procedure
-                 | E_Protected_Type
-                 | E_Task_Type);
+     (Ekind (E) in Flow_Generated_Globals.Traversal.Container_Scope);
+   --  ??? Container_Scope isn't the best name; rethink
+   --  ??? not sure how Protected_Type fits here
 
    ----------------------
    -- Is_Global_Entity --
@@ -224,21 +221,9 @@ package body Flow_Generated_Globals.Partial is
                                Call_Graph : in out Call_Graphs.Graph);
    --  Add E to the call graph for detecting non-returning subprograms
 
-   procedure Add_Recursive (E          :        Entity_Id;
-                            Contracts  :        Entity_Contract_Maps.Map;
-                            Call_Graph : in out Call_Graphs.Graph);
-   --  Add E to the call graph for detecting recursive subprograms
+   function Preanalyze_Body (E : Entity_Id) return Contract;
 
-   procedure Analyze
-     (Analyzed  :        Entity_Id;
-      Contracts : in out Entity_Contract_Maps.Map)
-     with Pre => Is_Caller_Entity (Analyzed);
-   --  Analyze E by first doing something when going top-down and then
-   --  finishing when going back.
-
-   function Analyze_Body (E : Entity_Id) return Contract;
-
-   function Analyze_Spec (E : Entity_Id) return Contract
+   function Preanalyze_Spec (E : Entity_Id) return Contract
    with Pre => (if Entity_In_SPARK (E)
                 then not Entity_Body_In_SPARK (E));
 
@@ -268,6 +253,18 @@ package body Flow_Generated_Globals.Partial is
    procedure Debug (Label : String; E : Entity_Id);
    --  Display Label followed by the entity name of E
 
+   procedure Do_Global
+     (Analyzed  :        Entity_Id;
+      Contracts : in out Entity_Contract_Maps.Map)
+   with Pre => Is_Caller_Entity (Analyzed);
+
+   procedure Do_Preanalysis
+     (Contracts : in out Entity_Contract_Maps.Map);
+   --  Collect contracts on the intraprocedural analysis alone
+
+   procedure Do_Recursive
+     (Contracts : in out Entity_Contract_Maps.Map);
+
    procedure Dump (Contracts : Entity_Contract_Maps.Map; Analyzed : Entity_Id);
    --  Display contracts highlighing the analyzed entity
 
@@ -284,11 +281,6 @@ package body Flow_Generated_Globals.Partial is
                                 Call_Graph :        Call_Graphs.Graph;
                                 Contracts  : in out Entity_Contract_Maps.Map);
    --  Fold call graph for detecting non-returning subprograms
-
-   procedure Fold_Recursive (Folded     :        Entity_Id;
-                             Call_Graph :        Call_Graphs.Graph;
-                             Contracts  : in out Entity_Contract_Maps.Map);
-   --  Fold call graph for detecting recursive subprograms
 
    function Frontend_Calls (E : Entity_Id) return Node_Sets.Set;
    --  Return direct calls using the frontend cross-references
@@ -355,161 +347,11 @@ package body Flow_Generated_Globals.Partial is
       end loop;
    end Add_Nonreturning;
 
-   -------------------
-   -- Add_Recursive --
-   -------------------
-
-   procedure Add_Recursive (E           :        Entity_Id;
-                            Contracts   :        Entity_Contract_Maps.Map;
-                            Call_Graph  : in out Call_Graphs.Graph)
-   is
-   begin
-      if Is_Callee (E) then
-         Call_Graph.Include_Vertex (E);
-
-         for Callee of Contracts (E).Direct_Calls loop
-            if Is_In_Analyzed_Files (Callee) then
-               Call_Graph.Include_Vertex (Callee);
-
-               Call_Graph.Add_Edge (E, Callee);
-            end if;
-         end loop;
-      end if;
-
-      for Child of Scope_Map (E) loop
-         Add_Recursive (Child, Contracts, Call_Graph);
-      end loop;
-   end Add_Recursive;
-
-   -------------
-   -- Analyze --
-   -------------
-
-   procedure Analyze
-     (Analyzed  :        Entity_Id;
-      Contracts : in out Entity_Contract_Maps.Map)
-   is
-      Has_Children : constant Boolean := not Is_Leaf (Analyzed);
-
-   begin
-      if Has_Children then
-         for Child of Scope_Map (Analyzed) loop
-            Analyze (Child, Contracts);
-         end loop;
-      end if;
-
-      declare
-         Contr : Contract;
-         --  Contract for the analyzed entity
-      begin
-
-         case Ekind (Analyzed) is
-            when Entry_Kind
-               | E_Function
-               | E_Procedure
-               | E_Task_Type
-               =>
-               Contr := (if Entity_In_SPARK (Analyzed)
-                           and then Entity_Body_In_SPARK (Analyzed)
-                         then Analyze_Body (Analyzed)
-                         else Analyze_Spec (Analyzed));
-
-            when E_Package =>
-               Contr := (if Entity_In_SPARK (Analyzed)
-                         then Analyze_Body (Analyzed)
-                         else Analyze_Spec (Analyzed));
-
-            when E_Protected_Type =>
-               --   ??? perhaps we should do something, but now we don't
-               null;
-
-            when others =>
-               raise Program_Error;
-         end case;
-
-         --  Terminating stuff, picked no matter if body is in SPARK
-         Contr.Has_Terminate :=
-           (if Is_Proper_Callee (Analyzed)
-            then Has_Terminate_Annotation (Analyzed)
-            else Meaningless);
-
-         Contr.Calls_Current_Task :=
-           Includes_Current_Task (Contr.Direct_Calls);
-
-         Contracts.Insert (Analyzed, Contr);
-      end;
-
-      if Analyzed = Root_Entity
-        or else Has_Children
-      then
-         declare
-            Patches : Global_Patch_Lists.List;
-
-         begin
-            Fold (Analyzed     => Analyzed,
-                  Folded       => Analyzed,
-                  Contracts    => Contracts,
-                  Patches      => Patches);
-
-            for Patch of Patches loop
-               declare
-                  Updated : Contract renames Contracts (Patch.Entity);
-
-               begin
-                  Updated.Globals := Patch.Globals;
-
-                  Filter_Local (Analyzed, Updated.Remote_Calls);
-               end;
-            end loop;
-         end;
-      end if;
-
-      --  ??? this is probably wrong place to filter locals
-      if Ekind (Analyzed) in Entry_Kind
-                           | E_Function
-                           | E_Procedure
-                           | E_Task_Type
-      then
-         declare
-            C : Contract renames Contracts (Analyzed);
-
-            S : constant Entity_Id := Scope (Analyzed);
-
-         begin
-            Filter_Local (Analyzed, C.Globals.Proper);
-            Filter_Local (Analyzed, C.Globals.Refined);
-
-            --  Protected type appear as an implicit parameter to protected
-            --  subprograms and protected entries, and as a global to things
-            --  nested in them. After resolving calls from protected
-            --  subprograms and protected entries to their nested things the
-            --  type will also appear as a global of the protected
-            --  subprogram/entry. Here we strip it. ??? Conceptually this
-            --  belongs to Filter_Local where Scope_Same_Or_Within does not
-            --  capture this.
-
-            if Ekind (S) = E_Protected_Type then
-               C.Globals.Proper.Inputs.Exclude (S);
-               C.Globals.Proper.Outputs.Exclude (S);
-               C.Globals.Proper.Proof_Ins.Exclude (S);
-               C.Globals.Refined.Inputs.Exclude (S);
-               C.Globals.Refined.Outputs.Exclude (S);
-               C.Globals.Refined.Proof_Ins.Exclude (S);
-            end if;
-         end;
-      end if;
-
-      --  Only debug output from now on
-      Debug_Traversal (Analyzed);
-
-      Dump (Contracts, Analyzed);
-   end Analyze;
-
    ------------------
    -- Analyze_Body --
    ------------------
 
-   function Analyze_Body (E : Entity_Id) return Contract
+   function Preanalyze_Body (E : Entity_Id) return Contract
    is
       FA : constant Flow_Analysis_Graphs :=
         Flow_Analyse_Entity
@@ -523,23 +365,17 @@ package body Flow_Generated_Globals.Partial is
    begin
       --  ??? I do not understand what Is_Generative means
       if FA.Is_Generative then
-         declare
-            Unused : Node_Sets.Set;
-            --  ??? should be remove
-
-         begin
-            Compute_Globals
-              (FA,
-               Inputs_Proof          => Contr.Globals.Refined.Proof_Ins,
-               Inputs                => Contr.Globals.Refined.Inputs,
-               Outputs               => Contr.Globals.Refined.Outputs,
-               Proof_Calls           => Contr.Globals.Calls.Proof_Calls,
-               Definite_Calls        => Contr.Globals.Calls.Definite_Calls,
-               Conditional_Calls     => Contr.Globals.Calls.Conditional_Calls,
-               Local_Variables       => Contr.Local_Variables,
-               Local_Ghost_Variables => Contr.Local_Ghost_Variables,
-               Local_Definite_Writes => Contr.Globals.Initializes);
-         end;
+         Compute_Globals
+           (FA,
+            Inputs_Proof          => Contr.Globals.Refined.Proof_Ins,
+            Inputs                => Contr.Globals.Refined.Inputs,
+            Outputs               => Contr.Globals.Refined.Outputs,
+            Proof_Calls           => Contr.Globals.Calls.Proof_Calls,
+            Definite_Calls        => Contr.Globals.Calls.Definite_Calls,
+            Conditional_Calls     => Contr.Globals.Calls.Conditional_Calls,
+            Local_Variables       => Contr.Local_Variables,
+            Local_Ghost_Variables => Contr.Local_Ghost_Variables,
+            Local_Definite_Writes => Contr.Globals.Initializes);
 
       else
          case Ekind (E) is
@@ -607,13 +443,13 @@ package body Flow_Generated_Globals.Partial is
       Contr.Entry_Calls := FA.Entries;
 
       return Contr;
-   end Analyze_Body;
+   end Preanalyze_Body;
 
    ------------------
    -- Analyze_Spec --
    ------------------
 
-   function Analyze_Spec (E : Entity_Id) return Contract is
+   function Preanalyze_Spec (E : Entity_Id) return Contract is
 
       Contr : Contract;
 
@@ -672,7 +508,7 @@ package body Flow_Generated_Globals.Partial is
       then
          if Has_User_Supplied_Globals (E) then
 
-            --  Pretend that user supplied refined globals
+            --  ??? Pretend that user supplied refined globals
             Contr.Globals.Proper := Contract_Globals (E, Refined => False);
 
             Contr.Tasking (Unsynch_Accesses) :=
@@ -740,7 +576,7 @@ package body Flow_Generated_Globals.Partial is
       pragma Assert (Contr.Entry_Calls.Is_Empty);
 
       return Contr;
-   end Analyze_Spec;
+   end Preanalyze_Spec;
 
    ----------------------
    -- Categorize_Calls --
@@ -1033,6 +869,139 @@ package body Flow_Generated_Globals.Partial is
          Ada.Text_IO.Put_Line (Label & " " & Full_Source_Name (E));
       end if;
    end Debug;
+
+   ------------------------
+   -- Do_Global_Contract --
+   ------------------------
+
+   procedure Do_Global
+     (Analyzed  :        Entity_Id;
+      Contracts : in out Entity_Contract_Maps.Map)
+   is
+      Has_Children : constant Boolean := not Is_Leaf (Analyzed);
+
+   begin
+      if Has_Children then
+         for Child of Scope_Map (Analyzed) loop
+            Do_Global (Child, Contracts);
+         end loop;
+      end if;
+
+      if Analyzed = Root_Entity
+        or else Has_Children
+      then
+         declare
+            Patches : Global_Patch_Lists.List;
+
+         begin
+            Fold (Analyzed     => Analyzed,
+                  Folded       => Analyzed,
+                  Contracts    => Contracts,
+                  Patches      => Patches);
+
+            for Patch of Patches loop
+               declare
+                  Updated : Contract renames Contracts (Patch.Entity);
+
+               begin
+                  Updated.Globals := Patch.Globals;
+
+                  Filter_Local (Analyzed, Updated.Remote_Calls);
+               end;
+            end loop;
+         end;
+      end if;
+
+      --  ??? this is probably wrong place to filter locals
+      if Ekind (Analyzed) in Entry_Kind
+                           | E_Function
+                           | E_Procedure
+                           | E_Task_Type
+      then
+         declare
+            C : Contract renames Contracts (Analyzed);
+
+            S : constant Entity_Id := Scope (Analyzed);
+
+         begin
+            Filter_Local (Analyzed, C.Globals.Proper);
+            Filter_Local (Analyzed, C.Globals.Refined);
+
+            --  Protected type appear as an implicit parameter to protected
+            --  subprograms and protected entries, and as a global to things
+            --  nested in them. After resolving calls from protected
+            --  subprograms and protected entries to their nested things the
+            --  type will also appear as a global of the protected
+            --  subprogram/entry. Here we strip it. ??? Conceptually this
+            --  belongs to Filter_Local where Scope_Same_Or_Within does not
+            --  capture this.
+
+            if Ekind (S) = E_Protected_Type then
+               C.Globals.Proper.Inputs.Exclude (S);
+               C.Globals.Proper.Outputs.Exclude (S);
+               C.Globals.Proper.Proof_Ins.Exclude (S);
+               C.Globals.Refined.Inputs.Exclude (S);
+               C.Globals.Refined.Outputs.Exclude (S);
+               C.Globals.Refined.Proof_Ins.Exclude (S);
+            end if;
+         end;
+      end if;
+   end Do_Global;
+
+   ---------------------------
+   -- Do_Recursive_Contract --
+   ---------------------------
+
+   procedure Do_Recursive
+     (Contracts : in out Entity_Contract_Maps.Map)
+   is
+      Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
+
+      procedure Add  (E : Entity_Id);
+      procedure Fold (E : Entity_Id);
+      --  Add E to the call graph for detecting recursive subprograms
+      --  Fold call graph for detecting recursive subprograms
+
+      ---------
+      -- Add --
+      ---------
+
+      procedure Add (E : Entity_Id) is
+      begin
+         if Is_Proper_Callee (E) then
+            Call_Graph.Include_Vertex (E);
+
+            for Callee of Contracts (E).Direct_Calls loop
+               if Is_In_Analyzed_Files (Callee) then
+                  Call_Graph.Include_Vertex (Callee);
+
+                  Call_Graph.Add_Edge (E, Callee);
+               end if;
+            end loop;
+         end if;
+      end Add;
+
+      ----------
+      -- Fold --
+      ----------
+
+      procedure Fold (E : Entity_Id) is
+      begin
+         Contracts (E).Recursive :=
+           (if Is_Proper_Callee (E)
+            then Call_Graph.Edge_Exists (E, E)
+            else Meaningless);
+      end Fold;
+
+   --  Start of processing for Do_Recursive_Contract
+
+   begin
+      Iterate_Main_Unit (Add'Access);
+
+      Call_Graph.Close;
+
+      Iterate_Main_Unit (Fold'Access);
+   end Do_Recursive;
 
    ----------
    -- Dump --
@@ -1589,7 +1558,7 @@ package body Flow_Generated_Globals.Partial is
          end loop;
 
       --  For non-callee entities we still need a dummy value, otherwise we
-      --  would access an invalid data.
+      --  would return a record with invalid data.
 
       else
          Contracts (Folded).Nonreturning := Meaningless;
@@ -1599,25 +1568,6 @@ package body Flow_Generated_Globals.Partial is
          Fold_Nonreturning (Child, Call_Graph, Contracts);
       end loop;
    end Fold_Nonreturning;
-
-   --------------------
-   -- Fold_Recursive --
-   --------------------
-
-   procedure Fold_Recursive (Folded     :        Entity_Id;
-                             Call_Graph :        Call_Graphs.Graph;
-                             Contracts  : in out Entity_Contract_Maps.Map)
-   is
-   begin
-      Contracts (Folded).Recursive :=
-        (if Is_Proper_Callee (Folded)
-         then Call_Graph.Edge_Exists (Folded, Folded)
-         else Meaningless);
-
-      for Child of Scope_Map (Folded) loop
-         Fold_Recursive (Child, Call_Graph, Contracts);
-      end loop;
-   end Fold_Recursive;
 
    --------------------
    -- Frontend_Calls --
@@ -1673,25 +1623,16 @@ package body Flow_Generated_Globals.Partial is
             --  needed for the summary of their outer scopes.
          begin
 
-            --  Generate Global contract
+            Do_Preanalysis (Contracts);
 
-            --  ??? only Gnat2Why_Args.Flow_Generate_Contracts
-            --  this doesn't work yet, because Analyze populates Contracts
-            Analyze (Root_Entity, Contracts);
+            if Gnat2Why_Args.Flow_Generate_Contracts then
+               Do_Global (Root_Entity, Contracts);
+            end if;
 
             --  Recursive contract is used when generating the Nonreturning
             --  contract, so it must be done first.
 
-            Generate_Recursive_Contract : declare
-               Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
-
-            begin
-               Add_Recursive (Root_Entity, Contracts, Call_Graph);
-
-               Call_Graph.Close;
-
-               Fold_Recursive (Root_Entity, Call_Graph, Contracts);
-            end Generate_Recursive_Contract;
+            Do_Recursive (Contracts);
 
             Generate_Nonreturning_Contract : declare
                Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
@@ -1750,6 +1691,72 @@ package body Flow_Generated_Globals.Partial is
 
    function Is_Proper_Callee (E : Entity_Id) return Boolean is
      (Ekind (E) in Entry_Kind | E_Function | E_Procedure);
+
+   --------------------
+   -- Do_Preanalysis --
+   --------------------
+
+   procedure Do_Preanalysis
+     (Contracts : in out Entity_Contract_Maps.Map)
+   is
+      procedure Preanalyze (E : Entity_Id);
+
+      ----------------
+      -- Preanalyze --
+      ----------------
+
+      procedure Preanalyze (E : Entity_Id) is
+         Contr : Contract;
+         --  Contract for the analyzed entity
+
+      begin
+         --  This is first traversal of the current compilation unit, so it's
+         --  a good place for some debug.
+         Debug_Traversal (E);
+
+         case Ekind (E) is
+            when Entry_Kind
+               | E_Function
+               | E_Procedure
+               | E_Task_Type
+               =>
+               Contr := (if Entity_In_SPARK (E)
+                           and then Entity_Body_In_SPARK (E)
+                         then Preanalyze_Body (E)
+                         else Preanalyze_Spec (E));
+
+            when E_Package =>
+               Contr := (if Entity_In_SPARK (E)
+                         then Preanalyze_Body (E)
+                         else Preanalyze_Spec (E));
+
+            when E_Protected_Type =>
+               --   ??? perhaps we should do something, but now we don't
+               null;
+
+            when others =>
+               raise Program_Error;
+         end case;
+
+         --  Terminating stuff, picked no matter if body is in SPARK
+         Contr.Has_Terminate :=
+           (if Is_Proper_Callee (E)
+            then Has_Terminate_Annotation (E)
+            else Meaningless);
+
+         Contr.Calls_Current_Task :=
+           Includes_Current_Task (Contr.Direct_Calls);
+
+         Contracts.Insert (E, Contr);
+      end Preanalyze;
+
+   begin
+      Iterate_Main_Unit (Preanalyze'Access);
+
+      --  Only debug output from now on
+
+      Dump (Contracts, Root_Entity);
+   end Do_Preanalysis;
 
    --------------
    -- To_Names --
