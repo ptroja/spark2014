@@ -36,7 +36,6 @@ package body Flow_Generated_Globals.ALI_Serialization is
       Kind          => Entity_Kind'First,
       Origin        => Globals_Origin_T'First,
       Has_Terminate => Boolean'First,
-      Recursive     => Boolean'First,
       Nonreturning  => Boolean'First,
       Nonblocking   => Boolean'First,
       others => <>);
@@ -189,11 +188,11 @@ package body Flow_Generated_Globals.ALI_Serialization is
                  | E_Function
                  | E_Procedure
                  | E_Task_Type
+                 | E_Package
       then
          --  ??? use Is_Proper_Callee here
          if V.Kind /= E_Task_Type then
             Serialize (A, V.Has_Terminate);
-            Serialize (A, V.Recursive);
             Serialize (A, V.Nonreturning);
             Serialize (A, V.Nonblocking);
          end if;

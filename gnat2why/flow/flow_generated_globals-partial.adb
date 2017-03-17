@@ -164,9 +164,6 @@ package body Flow_Generated_Globals.Partial is
       Direct_Calls      : Node_Sets.Set;  --   ??? Callee_Set
       --  For compatibility with old GG (e.g. assumptions)
 
-      Remote_Calls      : Node_Sets.Set;
-      --  Calls to routines in other compilation units
-
       Local_Variables       : Global_Set;
       Local_Ghost_Variables : Global_Set;
       --  Only meaningful for packages
@@ -174,7 +171,6 @@ package body Flow_Generated_Globals.Partial is
       Has_Terminate : Boolean;
       --  Only meaningful for subprograms and entries
 
-      Recursive          : Boolean;
       Nonreturning       : Boolean;
       Nonblocking        : Boolean;
       Entry_Calls        : Entry_Call_Sets.Set;
@@ -216,11 +212,6 @@ package body Flow_Generated_Globals.Partial is
    --  Specs
    ----------------------------------------------------------------------------
 
-   procedure Add_Nonreturning (E          :        Entity_Id;
-                               Contracts  :        Entity_Contract_Maps.Map;
-                               Call_Graph : in out Call_Graphs.Graph);
-   --  Add E to the call graph for detecting non-returning subprograms
-
    function Preanalyze_Body (E : Entity_Id) return Contract;
 
    function Preanalyze_Spec (E : Entity_Id) return Contract
@@ -261,9 +252,6 @@ package body Flow_Generated_Globals.Partial is
      (Contracts : in out Entity_Contract_Maps.Map);
    --  Collect contracts on the intraprocedural analysis alone
 
-   procedure Do_Recursive
-     (Contracts : in out Entity_Contract_Maps.Map);
-
    procedure Dump (Contracts : Entity_Contract_Maps.Map; Analyzed : Entity_Id);
    --  Display contracts highlighing the analyzed entity
 
@@ -275,11 +263,6 @@ package body Flow_Generated_Globals.Partial is
                    Contracts :        Entity_Contract_Maps.Map;
                    Patches   : in out Global_Patch_Lists.List);
    --  Main workhorse for the partial generated globals
-
-   procedure Fold_Nonreturning (Folded     :        Entity_Id;
-                                Call_Graph :        Call_Graphs.Graph;
-                                Contracts  : in out Entity_Contract_Maps.Map);
-   --  Fold call graph for detecting non-returning subprograms
 
    function Frontend_Calls (E : Entity_Id) return Node_Sets.Set;
    --  Return direct calls using the frontend cross-references
@@ -310,41 +293,6 @@ package body Flow_Generated_Globals.Partial is
    ----------------------------------------------------------------------------
    --  Bodies
    ----------------------------------------------------------------------------
-
-   ----------------------
-   -- Add_Nonreturning --
-   ----------------------
-
-   procedure Add_Nonreturning (E          :        Entity_Id;
-                               Contracts  :        Entity_Contract_Maps.Map;
-                               Call_Graph : in out Call_Graphs.Graph)
-   is
-   begin
-      if Is_Callee (E) then
-         Call_Graph.Include_Vertex (E);
-
-         for Callee of Contracts (E).Direct_Calls loop
-            if Is_In_Analyzed_Files (Callee) then
-               if Ekind (Callee) in Entry_Kind
-                                  | E_Function
-                                  | E_Procedure
-                 and then Contracts (Callee).Has_Terminate
-               then
-                  null;
-               else
-                  --  ??? cut graph at Nonreturning and Recursive subprograms
-                  Call_Graph.Include_Vertex (Callee);
-
-                  Call_Graph.Add_Edge (E, Callee);
-               end if;
-            end if;
-         end loop;
-      end if;
-
-      for Child of Scope_Map (E) loop
-         Add_Nonreturning (Child, Contracts, Call_Graph);
-      end loop;
-   end Add_Nonreturning;
 
    ------------------
    -- Analyze_Body --
@@ -405,9 +353,6 @@ package body Flow_Generated_Globals.Partial is
       --  ??? not sure about protected types
       if Ekind (E) /= E_Protected_Type then
          Contr.Direct_Calls := FA.Direct_Calls;
-
-         --  We start with all calls being remote and filter local ones later
-         Contr.Remote_Calls := FA.Direct_Calls;
       end if;
 
       if Ekind (E) = E_Package then
@@ -917,8 +862,6 @@ package body Flow_Generated_Globals.Partial is
 
                begin
                   Updated.Globals := Patch.Globals;
-
-                  Filter_Local (Analyzed, Updated.Remote_Calls);
                end;
             end loop;
          end;
@@ -959,61 +902,6 @@ package body Flow_Generated_Globals.Partial is
          end;
       end if;
    end Do_Global;
-
-   ---------------------------
-   -- Do_Recursive_Contract --
-   ---------------------------
-
-   procedure Do_Recursive
-     (Contracts : in out Entity_Contract_Maps.Map)
-   is
-      Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
-
-      procedure Add  (E : Entity_Id);
-      procedure Fold (E : Entity_Id);
-      --  Add E to the call graph for detecting recursive subprograms
-      --  Fold call graph for detecting recursive subprograms
-
-      ---------
-      -- Add --
-      ---------
-
-      procedure Add (E : Entity_Id) is
-      begin
-         if Is_Proper_Callee (E) then
-            Call_Graph.Include_Vertex (E);
-
-            for Callee of Contracts (E).Direct_Calls loop
-               if Is_In_Analyzed_Files (Callee) then
-                  Call_Graph.Include_Vertex (Callee);
-
-                  Call_Graph.Add_Edge (E, Callee);
-               end if;
-            end loop;
-         end if;
-      end Add;
-
-      ----------
-      -- Fold --
-      ----------
-
-      procedure Fold (E : Entity_Id) is
-      begin
-         Contracts (E).Recursive :=
-           (if Is_Proper_Callee (E)
-            then Call_Graph.Edge_Exists (E, E)
-            else Meaningless);
-      end Fold;
-
-   --  Start of processing for Do_Recursive_Contract
-
-   begin
-      Iterate_Main_Unit (Add'Access);
-
-      Call_Graph.Close;
-
-      Iterate_Main_Unit (Fold'Access);
-   end Do_Recursive;
 
    ----------
    -- Dump --
@@ -1538,49 +1426,6 @@ package body Flow_Generated_Globals.Partial is
       end loop;
    end Fold;
 
-   -----------------------
-   -- Fold_Nonreturning --
-   -----------------------
-
-   procedure Fold_Nonreturning (Folded     :        Entity_Id;
-                                Call_Graph :        Call_Graphs.Graph;
-                                Contracts  : in out Entity_Contract_Maps.Map)
-   is
-   begin
-      if Is_Proper_Callee (Folded) then
---        Contracts (Folded).Nonreturning :=
---          (for some Callee of
---             Call_Graph.Get_Collection (Call_Graph.Get_Vertex (Folded),
---                                        Call_Graphs.Out_Neighbours) =>
---                Contracts (Call_Graph.Get_Key (Callee)).Nonreturning);
-
-         for Callee of
-           Call_Graph.Get_Collection (Call_Graph.Get_Vertex (Folded),
-                                      Call_Graphs.Out_Neighbours)
-         loop
-            declare
-               E : constant Entity_Id := Call_Graph.Get_Key (Callee);
-
-            begin
-               if Contracts (E).Nonreturning then
-                  Contracts (Folded).Nonreturning := True;
-                  exit;
-               end if;
-            end;
-         end loop;
-
-      --  For non-callee entities we still need a dummy value, otherwise we
-      --  would return a record with invalid data.
-
-      else
-         Contracts (Folded).Nonreturning := Meaningless;
-      end if;
-
-      for Child of Scope_Map (Folded) loop
-         Fold_Nonreturning (Child, Call_Graph, Contracts);
-      end loop;
-   end Fold_Nonreturning;
-
    --------------------
    -- Frontend_Calls --
    --------------------
@@ -1643,19 +1488,6 @@ package body Flow_Generated_Globals.Partial is
 
             --  Recursive contract is used when generating the Nonreturning
             --  contract, so it must be done first.
-
-            Do_Recursive (Contracts);
-
-            Generate_Nonreturning_Contract : declare
-               Call_Graph : Call_Graphs.Graph := Call_Graphs.Create;
-
-            begin
-               Add_Nonreturning (Root_Entity, Contracts, Call_Graph);
-
-               Call_Graph.Close;
-
-               Fold_Nonreturning (Root_Entity, Call_Graph, Contracts);
-            end Generate_Nonreturning_Contract;
 
             Write_Contracts_To_ALI (Root_Entity, Contracts);
          end;
@@ -1850,7 +1682,6 @@ package body Flow_Generated_Globals.Partial is
 
       if Ekind (E) /= E_Protected_Type then
          GG_Register_Direct_Calls (E, Contr.Direct_Calls);
-         GG_Register_Remote_Calls (E, Contr.Remote_Calls);
 
          GG_Register_Global_Info
            ((Name                  => To_Entity_Name (E),
@@ -1881,7 +1712,6 @@ package body Flow_Generated_Globals.Partial is
                (Contr.Local_Ghost_Variables),
 
              Has_Terminate         => Contr.Has_Terminate,
-             Recursive             => Contr.Recursive,
              Nonreturning          => Contr.Nonreturning,
              Nonblocking           => Contr.Nonblocking,
              Tasking               => To_Names (Contr.Entry_Calls,

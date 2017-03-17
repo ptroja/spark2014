@@ -109,9 +109,6 @@ package body Flow_Generated_Globals.Phase_1 is
    Direct_Calls_List : Direct_Call_Lists.List;
    --  Container with direct calls for subprograms, entries and tasks types
 
-   Remote_Calls_List : Direct_Call_Lists.List;
-   --  Container with calls to subprograms in other compilation units
-
    ----------------------------------------------------------------------
    --  Volatile information
    ----------------------------------------------------------------------
@@ -221,27 +218,6 @@ package body Flow_Generated_Globals.Phase_1 is
       Protected_Instances.Append ((Variable => PO,
                                    Priority => Prio));
    end GG_Register_Protected_Object;
-
-   ------------------------------
-   -- GG_Register_Remote_Calls --
-   ------------------------------
-
-   procedure GG_Register_Remote_Calls (E : Entity_Id; Calls : Node_Sets.Set) is
-   begin
-      --  ??? code duplication with GG_Register_Direct_Calls
-      Remote_Calls_List.Append ((Caller  => To_Entity_Name (E),
-                                 Callees => <>));
-
-      declare
-         Callees : Name_Lists.List renames
-           Remote_Calls_List (Remote_Calls_List.Last).Callees;
-
-      begin
-         for Call of Calls loop
-            Callees.Append (To_Entity_Name (Call));
-         end loop;
-      end;
-   end GG_Register_Remote_Calls;
 
    ----------------------------------
    -- GG_Register_State_Refinement --

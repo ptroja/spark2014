@@ -44,20 +44,6 @@ package Flow_Generated_Globals.Phase_1 is
    --  Register direct calls without caring if they are proof-only, definite or
    --  conditional.
 
-   procedure GG_Register_Remote_Calls (E : Entity_Id; Calls : Node_Sets.Set)
-   with Pre  => GG_Mode = GG_Write_Mode and then
-                Ekind (E) in Entry_Kind  |
-                             E_Function  |
-                             E_Package   |
-                             E_Procedure |
-                             E_Task_Type and then
-                (for all C of Calls => Ekind (C) in Entry_Kind |
-                                                    E_Function |
-                                                    E_Package  |
-                                                    E_Procedure),
-        Post => GG_Mode = GG_Write_Mode;
-   --  Register calls to subprograms in other compilation units
-
    procedure GG_Register_State_Refinement (E : Entity_Id)
    with Pre  => GG_Mode = GG_Write_Mode and then
                 Ekind (E) = E_Package,
