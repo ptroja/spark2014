@@ -1635,7 +1635,7 @@ package body Flow_Generated_Globals.Phase_2 is
                if Ekind (E) in E_Function
                              | E_Procedure
                              | E_Task_Type
-                  and then not In_Main_Unit (E)
+                  and then not Is_In_Analyzed_Files (E)
                then
                   declare
                      EN : constant Entity_Name := To_Entity_Name (E);
@@ -1656,9 +1656,11 @@ package body Flow_Generated_Globals.Phase_2 is
                   Info : Partial_Contract renames
                     Phase_1_Info_Maps.Element (C);
                begin
+                  --  ??? remove double call to Find_Entity
                   if Info.Kind = E_Package
                     and then not (Present (Find_Entity (EN))
-                                  and then In_Main_Unit (Find_Entity (EN)))
+                                  and then Is_In_Analyzed_Files
+                                              (Find_Entity (EN)))
                     and then not Info.Local
                   then
                      Debug ("Fold remote package " & To_String (EN));
