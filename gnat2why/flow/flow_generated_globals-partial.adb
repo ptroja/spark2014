@@ -238,8 +238,7 @@ package body Flow_Generated_Globals.Partial is
    function Contract_Calls (E : Entity_Id) return Node_Sets.Set
    with Pre => Ekind (E) in Entry_Kind
                           | E_Function
-                          | E_Procedure,
-        Ghost;
+                          | E_Procedure;
    --  Return direct calls in the contract of E, i.e. in its Pre, Post and
    --  Contract_Cases.
 
@@ -469,13 +468,13 @@ package body Flow_Generated_Globals.Partial is
       is
          Unsynch : Node_Sets.Set;
 
-         procedure Collect (Vars : Node_Sets.Set);
+         procedure Collect_Unsynchronized (Vars : Node_Sets.Set);
 
-         -------------
-         -- Collect --
-         -------------
+         ----------------------------
+         -- Collect_Unsynchronized --
+         ----------------------------
 
-         procedure Collect (Vars : Node_Sets.Set) is
+         procedure Collect_Unsynchronized (Vars : Node_Sets.Set) is
          begin
             for E of Vars loop
                if not (Is_Heap_Entity (E)
@@ -486,19 +485,19 @@ package body Flow_Generated_Globals.Partial is
                   Contr.Tasking (Unsynch_Accesses).Include (E);
                end if;
             end loop;
-         end Collect;
+         end Collect_Unsynchronized;
 
       --  Start of processing for Unsynchronized_Globals
 
       begin
-         Collect (G.Proof_Ins);
-         Collect (G.Inputs);
-         Collect (G.Outputs);
+         Collect_Unsynchronized (G.Proof_Ins);
+         Collect_Unsynchronized (G.Inputs);
+         Collect_Unsynchronized (G.Outputs);
 
          return Unsynch;
       end Unsynchronized_Globals;
 
-   --  Start of processing for Analyze_Spec
+   --  Start of processing for Preanalyze_Spec
 
    begin
       if Ekind (E) in Entry_Kind
@@ -508,7 +507,7 @@ package body Flow_Generated_Globals.Partial is
       then
          if Has_User_Supplied_Globals (E) then
 
-            --  ??? Pretend that user supplied refined globals
+            --  ??? do nothing?
             Contr.Globals.Proper := Contract_Globals (E, Refined => False);
 
             Contr.Tasking (Unsynch_Accesses) :=
@@ -529,51 +528,64 @@ package body Flow_Generated_Globals.Partial is
          end if;
       end if;
 
-      Contr.Direct_Calls                    := Frontend_Calls (E);
-      Contr.Globals.Calls.Conditional_Calls := Contr.Direct_Calls;
+      Contr.Globals.Calls.Conditional_Calls := Frontend_Calls (E);
 
       pragma Assert
         (if Is_Proper_Callee (E)
          then Contract_Calls (E).Is_Subset
                 (Of_Set => Contr.Globals.Calls.Conditional_Calls));
 
-      --  We register subprograms with body not in SPARK as nonreturning except
-      --  when they are:
-      --  * predefined (or are instances of predefined subprograms)
-      --  * imported
-      --  * intrinsic
-      --  * have no body yet (no .adb) and are not procedures annotated with
-      --    No_Return.
+      if Entity_In_SPARK (E) then
+         if Is_Proper_Callee (E) then
+            Contr.Direct_Calls := Contract_Calls (E);
+         end if;
 
-      Contr.Nonreturning := not
-        (In_Predefined_Unit (E)
-           or else
-         Is_Imported (E)
-           or else
-         Is_Intrinsic (E)
-           or else
-         (Has_No_Body_Yet (E)
-          and then not No_Return (E)));
+         --  We register subprograms with body not in SPARK as nonreturning
+         --  except when they are:
+         --  * predefined (or are instances of predefined subprograms)
+         --  * imported
+         --  * intrinsic
+         --  * have no body yet (no .adb) and are not procedures annotated with
+         --    No_Return.
 
-      --  Register accesses to unsynchronized states and
-      --  variables that occur in contract.
-      --  Collect_Unsynchronized_Globals (Contr.Proof_Ins);
-      --  Collect_Unsynchronized_Globals (Contr.Inputs);
-      --  Collect_Unsynchronized_Globals (Contr.Outputs);
+         Contr.Nonreturning := not
+           (In_Predefined_Unit (E)
+            or else
+            Is_Imported (E)
+            or else
+            Is_Intrinsic (E)
+            or else
+              (Has_No_Body_Yet (E)
+               and then not No_Return (E)));
 
-      Contr.Nonblocking :=
-        (if Is_Callee (E)
-         then False --  ??? first approximation
-         else Meaningless);
+         --  Register accesses to unsynchronized states and
+         --  variables that occur in contract.
+         --  Collect_Unsynchronized_Globals (Contr.Proof_Ins);
+         --  Collect_Unsynchronized_Globals (Contr.Inputs);
+         --  Collect_Unsynchronized_Globals (Contr.Outputs);
 
-      --  In a contract it is syntactically not allowed to suspend on a
-      --  suspension object, call a protected procedure or entry, and it is
-      --  semantically not allowed to externally call a protected function
-      --  (because such calls are volatile and they would occur in an
-      --  interfering context).
-      pragma Assert (Contr.Tasking (Suspends_On).Is_Empty);
-      pragma Assert (Contr.Tasking (Locks).Is_Empty);
-      pragma Assert (Contr.Entry_Calls.Is_Empty);
+         Contr.Nonblocking :=
+           (if Is_Callee (E)
+            then False --  ??? first approximation
+            else Meaningless);
+
+         --  In a contract it is syntactically not allowed to suspend on a
+         --  suspension object, call a protected procedure or entry, and it is
+         --  semantically not allowed to externally call a protected function
+         --  (because such calls are volatile and they would occur in an
+         --  interfering context).
+         pragma Assert (Contr.Tasking (Suspends_On).Is_Empty);
+         pragma Assert (Contr.Tasking (Locks).Is_Empty);
+         pragma Assert (Contr.Entry_Calls.Is_Empty);
+
+      --  Otherwise, fill in dummy value
+
+      else
+         pragma Assert (Contr.Direct_Calls.Is_Empty);
+
+         Contr.Nonreturning := Meaningless;
+         Contr.Nonblocking  := Meaningless;
+      end if;
 
       return Contr;
    end Preanalyze_Spec;
