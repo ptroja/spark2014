@@ -225,11 +225,15 @@ package body Flow_Generated_Globals.Partial is
    return Call_Nodes
    with Pre => Is_Caller_Entity (E) and then
                Scope_Truly_Within_Or_Same (E, Analyzed);
+   --  Categorize calls from E to entities nested within Analyzed into Proof,
+   --  Conditional and Definite calls.
 
    function Contract_Calls (E : Entity_Id) return Node_Sets.Set
    with Pre => Ekind (E) in Entry_Kind
                           | E_Function
-                          | E_Procedure;
+                          | E_Procedure,
+        Post => (for all Call of Contract_Calls'Result =>
+                    Ekind (Call) = E_Function);
    --  Return direct calls in the contract of E, i.e. in its Pre, Post and
    --  Contract_Cases.
 
@@ -552,85 +556,125 @@ package body Flow_Generated_Globals.Partial is
       RProof, RConditional, RDefinite : Node_Sets.Set;
 
    begin
-      --  Categorize calls: PROOF CALLS
+      --  Categorization is done in two steps: first, we find subprograms
+      --  called definitely, conditionally and in proof contexts without caring
+      --  about overlapping (e.g a routine that is called both definitely and
+      --  in proof will be found twice); then we handle overlapping, which is
+      --  necessary to keep things sane, as enforced by the Call_Nodes type
+      --  predicate. The first step is difficult, then overlapping is simple.
+      --
+      --  The first step is relatively easy to specify inductively, but its
+      --  imperative implementation is quite hard to follow. Veryfing it would
+      --  be very reassuring. So here is a spec, and verification is left as an
+      --  excercise for the reader.
+      --
+      --  Notation
+      --  ========
+      --
+      --  Def, Cond and Proof denote sets of subprograms called definitely,
+      --  conditionally and in proof contexts (they might overlap). That we are
+      --  looking for.
+      --
+      --  Def_i, Cond_i and Proof_i denote sets of subprograms called
+      --  "immediately", e.g. as those whose calls appear in the CFG of the
+      --  caller. This what we get in Contracts.
+      --
+      --  Both the prefixed and unprefixed sets are defined as a relation and
+      --  typed in the curried style typical to proof assistants, e.g.: "Def x
+      --  y" reads as "x will definitely call y" (either immedietely or as an
+      --  effect of a call to some other subprogram, which we typically call
+      --  "p" for proxy).
+      --
+      --  Specification
+      --  =============
+      --
+      --  Subprograms called definitely are inductively specified as:
+      --
+      --  Def x y =
+      --    Def_i x y \/
+      --    ?p. Def x p /\ Def_i p y,
+      --
+      --  i.e. they are either immediately (and definitely) calleed from x or
+      --  immediately called from some of its definite callees. In other words,
+      --  they are reachable from x through a chain of defnitely called
+      --  subprograms.
+      --
+      --  Subprograms called conditionally are more complicated:
+      --
+      --  Cond x y =
+      --    Cond_i x y \/
+      --    (?p. Cond x p /\ (Def_i p y \/ Cond_i p y)) \/
+      --    (?p. Def x p /\ Cond_i p y),
+      --
+      --  i.e. they are either immediately (and conditionally) called from x,
+      --  immediately called (conditionally or definitely) from from one of its
+      --  conditional callees, or immediately (but conditionally) called from
+      --  one of its defniite callees. Note: this definition uses Def from the
+      --  previous one.
+      --
+      --  And those called in proof context are the most complicated:
+      --
+      --  Proof x y =
+      --    Proof_i x y \/
+      --    (?p. (Def x p \/ Cond x p) /\ Proof_i p y) \/
+      --    (?p. Proof x p /\ (Def_i p y \/ Cond_i p y \/ Proof_i p y))
+      --
+      --  i.e. they are either immediately called from x in a proof context, or
+      --  are immediately called from a conditional or definitive callee of x
+      --  in a proof context, or are immediately called no matter how from a
+      --  proof callee of x. Note: this definitions uses Def and Cond from the
+      --  previous ones.
 
-      declare
-         type Calls is record
-            Proof, Other : Node_Sets.Set;
-         end record;
+      --  Definitive calls are the easiest to find and the implementation is
+      --  fairly straightforward. Conditional and proof calls are simply
+      --  ignored. Note: this could be done with a simple closure of a graph
+      --  with only definitive calls, but we would still need a similar
+      --  traversal to populate such a graph.
+      --
+      --  We maintain two sets: Todo, initialized according to the base case of
+      --  the inductive specification; and Done, processed according to the
+      --  inductive cases. For definitive calls those two sets are enough; for
+      --  conditional and proof calls they are split into subsets for handling
+      --  different inductive cases.
 
-         Todo : Calls := (Proof => Original.Proof_Calls,
-                          Other => Original.Conditional_Calls or
-                                   Original.Definite_Calls);
-
-         Done : Calls;
+      Find_Definite_Calls : declare
+         Todo : Node_Sets.Set := Original.Definite_Calls;
+         Done : Node_Sets.Set;
 
       begin
          loop
-            if not Todo.Proof.Is_Empty then
+            if not Todo.Is_Empty then
                declare
-                  Pick : constant Entity_Id := Todo.Proof.First_Element;
+                  Pick : constant Entity_Id := Todo.First_Element;
 
                begin
-                  Done.Proof.Insert (Pick);
+                  Done.Insert (Pick);
 
                   if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
 
-                     declare
-                        Picked : Call_Nodes renames
-                          Contracts (Pick).Globals.Calls;
-
-                     begin
-                        Todo.Proof.Union
-                          ((Picked.Proof_Calls or
-                            Picked.Conditional_Calls or
-                            Picked.Definite_Calls)
-                           - Done.Proof);
-                     end;
+                     Todo.Union
+                       (Contracts (Pick).Globals.Calls.Definite_Calls - Done);
                   end if;
 
-                  Todo.Proof.Delete (Pick);
-               end;
-            elsif not Todo.Other.Is_Empty then
-               declare
-                  Pick : constant Entity_Id := Todo.Other.First_Element;
-
-               begin
-                  Done.Other.Insert (Pick);
-
-                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
-
-                     declare
-                        Picked : Call_Nodes renames
-                          Contracts (Pick).Globals.Calls;
-
-                     begin
-                        Todo.Proof.Union
-                          (Picked.Proof_Calls - Done.Proof);
-
-                        Todo.Other.Union
-                          ((Picked.Conditional_Calls or
-                            Picked.Definite_Calls)
-                           - Done.Other);
-                     end;
-                  end if;
-
-                  Todo.Other.Delete (Pick);
+                  Todo.Delete (Pick);
                end;
             else
                exit;
             end if;
          end loop;
 
-         pragma Assert (Original.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
+         pragma Assert (Original.Definite_Calls.Is_Subset (Of_Set => Done));
 
-         Node_Sets.Move (Target => RProof,
-                         Source => Done.Proof);
-      end;
+         Node_Sets.Move (Target => RDefinite,
+                         Source => Done);
+      end Find_Definite_Calls;
 
-      --  Categorize calls: CONDITIONAL CALLS
+      --  Conditional calls are more diffiuclt to find, but the implementation
+      --  is still similar to the previous one. It maintains two sets of
+      --  called subprograms: those called definitevely and those called
+      --  conditionally.
 
-      declare
+      Find_Conditional_Calls : declare
          type Calls is record
             Conditional, Definite : Node_Sets.Set;
          end record;
@@ -697,44 +741,88 @@ package body Flow_Generated_Globals.Partial is
 
          Node_Sets.Move (Target => RConditional,
                          Source => Done.Conditional);
-      end;
+      end Find_Conditional_Calls;
 
-      --  Categorize calls: Definite CALLS
+      --  Proof calls turns out to be not really harder than conditional calls;
+      --  their implementation follows the very same pattern.
 
-      declare
-         Todo : Node_Sets.Set := Original.Definite_Calls;
-         Done : Node_Sets.Set;
+      Find_Proof_Calls : declare
+         type Calls is record
+            Proof, Other : Node_Sets.Set;
+         end record;
+
+         Todo : Calls := (Proof => Original.Proof_Calls,
+                          Other => Original.Conditional_Calls or
+                                   Original.Definite_Calls);
+
+         Done : Calls;
 
       begin
          loop
-            if not Todo.Is_Empty then
+            if not Todo.Proof.Is_Empty then
                declare
-                  Pick : constant Entity_Id := Todo.First_Element;
+                  Pick : constant Entity_Id := Todo.Proof.First_Element;
 
                begin
-                  Done.Insert (Pick);
+                  Done.Proof.Insert (Pick);
 
                   if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
 
-                     Todo.Union
-                       (Contracts (Pick).Globals.Calls.Definite_Calls - Done);
+                     declare
+                        Picked : Call_Nodes renames
+                          Contracts (Pick).Globals.Calls;
+
+                     begin
+                        Todo.Proof.Union
+                          ((Picked.Proof_Calls or
+                              Picked.Conditional_Calls or
+                              Picked.Definite_Calls)
+                             - Done.Proof);
+                     end;
                   end if;
 
-                  Todo.Delete (Pick);
+                  Todo.Proof.Delete (Pick);
+               end;
+            elsif not Todo.Other.Is_Empty then
+               declare
+                  Pick : constant Entity_Id := Todo.Other.First_Element;
+
+               begin
+                  Done.Other.Insert (Pick);
+
+                  if Scope_Truly_Within_Or_Same (Pick, Analyzed) then
+
+                     declare
+                        Picked : Call_Nodes renames
+                          Contracts (Pick).Globals.Calls;
+
+                     begin
+                        Todo.Proof.Union
+                          (Picked.Proof_Calls - Done.Proof);
+
+                        Todo.Other.Union
+                          ((Picked.Conditional_Calls or
+                              Picked.Definite_Calls)
+                             - Done.Other);
+                     end;
+                  end if;
+
+                  Todo.Other.Delete (Pick);
                end;
             else
                exit;
             end if;
          end loop;
 
-         pragma Assert (Original.Definite_Calls.Is_Subset (Of_Set => Done));
+         pragma Assert (Original.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
 
-         Node_Sets.Move (Target => RDefinite,
-                         Source => Done);
-      end;
+         Node_Sets.Move (Target => RProof,
+                         Source => Done.Proof);
+      end Find_Proof_Calls;
 
-      --  Overlapped conditional and definite calls are intentionally different
-      --  than in slicing.
+      --  Finally, overlapping. For proof calls it is just like in slicing.
+      --  However, calls that are both conditional and defnitive are resolved
+      --  in slicing as definitive, but here as conditional.
       return (Proof_Calls       => RProof - RConditional - RDefinite,
               Conditional_Calls => RConditional,
               Definite_Calls    => RDefinite - RConditional);
