@@ -282,6 +282,10 @@ package body Flow_Generated_Globals.Phase_2 is
      (EN        : Entity_Name;
       Contracts : Entity_Contract_Maps.Map)
       return Call_Names;
+   --  Equivalent of a routine with the same name from phase 1, but operating
+   --  on sets of Entity_Names. Refactoring them to avoid code reuse is
+   --  terribly painful, because they operate on containers with different
+   --  items. Here it is intentionally undocumented; see phase 1 for comments.
 
    function Scope (EN : Entity_Name) return Entity_Name;
    --  Equivalent of Sinfo.Scope for entity names
@@ -2802,12 +2806,109 @@ package body Flow_Generated_Globals.Phase_2 is
    is
       Original : Call_Names renames Contracts (EN).Calls;
 
-      RProof, RConditional, RDefinite : Name_Sets.Set;
+      O_Proof, O_Conditional, O_Definite : Name_Sets.Set;
 
    begin
-      --  Categorize calls: PROOF CALLS
+      Find_Definitive_Calls : declare
+         Todo : Name_Sets.Set := Original.Definite_Calls;
+         Done : Name_Sets.Set;
 
-      declare
+      begin
+         loop
+            if not Todo.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.First);
+
+               begin
+                  Done.Insert (Pick);
+
+                  if Contracts.Contains (Pick) then
+                     Todo.Union (Contracts (Pick).Calls.Definite_Calls - Done);
+                  end if;
+
+                  Todo.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert (Original.Definite_Calls.Is_Subset (Of_Set => Done));
+
+         Name_Sets.Move (Target => O_Definite,
+                         Source => Done);
+      end Find_Definitive_Calls;
+
+      Find_Conditional_Calls : declare
+         type Calls is record
+            Conditional, Definite : Name_Sets.Set;
+         end record;
+
+         Todo : Calls := (Conditional => Original.Conditional_Calls,
+                          Definite    => Original.Definite_Calls);
+
+         Done : Calls;
+
+      begin
+         loop
+            if not Todo.Conditional.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.Conditional.First);
+
+               begin
+                  Done.Conditional.Insert (Pick);
+
+                  if Contracts.Contains (Pick) then
+                     declare
+                        Picked : Call_Names renames Contracts (Pick).Calls;
+
+                     begin
+                        Todo.Conditional.Union
+                          ((Picked.Conditional_Calls or Picked.Definite_Calls)
+                           - Done.Conditional);
+                     end;
+                  end if;
+
+                  Todo.Conditional.Delete (Pick);
+               end;
+            elsif not Todo.Definite.Is_Empty then
+               declare
+                  Pick : constant Entity_Name :=
+                    Name_Sets.Element (Todo.Definite.First);
+
+               begin
+                  Done.Definite.Insert (Pick);
+
+                  if Contracts.Contains (Pick) then
+                     declare
+                        Picked : Call_Names renames Contracts (Pick).Calls;
+
+                     begin
+                        Todo.Conditional.Union
+                          (Picked.Conditional_Calls - Done.Conditional);
+
+                        Todo.Definite.Union
+                          (Picked.Definite_Calls - Done.Definite);
+                     end;
+                  end if;
+
+                  Todo.Definite.Delete (Pick);
+               end;
+            else
+               exit;
+            end if;
+         end loop;
+
+         pragma Assert
+           (Original.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
+
+         Name_Sets.Move (Target => O_Conditional,
+                         Source => Done.Conditional);
+      end Find_Conditional_Calls;
+
+      Find_Proof_Calls : declare
          type Calls is record
             Proof, Other : Name_Sets.Set;
          end record;
@@ -2875,118 +2976,13 @@ package body Flow_Generated_Globals.Phase_2 is
 
          pragma Assert (Original.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
 
-         Name_Sets.Move (Target => RProof,
+         Name_Sets.Move (Target => O_Proof,
                          Source => Done.Proof);
-      end;
+      end Find_Proof_Calls;
 
-      --  Categorize calls: CONDITIONAL CALLS
-
-      declare
-         type Calls is record
-            Conditional, Definite : Name_Sets.Set;
-         end record;
-
-         Todo : Calls := (Conditional => Original.Conditional_Calls,
-                          Definite    => Original.Definite_Calls);
-
-         Done : Calls;
-
-      begin
-         loop
-            if not Todo.Conditional.Is_Empty then
-               declare
-                  Pick : constant Entity_Name :=
-                    Name_Sets.Element (Todo.Conditional.First);
-
-               begin
-                  Done.Conditional.Insert (Pick);
-
-                  if Contracts.Contains (Pick) then
-                     declare
-                        Picked : Call_Names renames Contracts (Pick).Calls;
-
-                     begin
-                        Todo.Conditional.Union
-                          ((Picked.Conditional_Calls or Picked.Definite_Calls)
-                           - Done.Conditional);
-                     end;
-                  end if;
-
-                  Todo.Conditional.Delete (Pick);
-               end;
-            elsif not Todo.Definite.Is_Empty then
-               declare
-                  Pick : constant Entity_Name :=
-                    Name_Sets.Element (Todo.Definite.First);
-
-               begin
-                  Done.Definite.Insert (Pick);
-
-                  if Contracts.Contains (Pick) then
-                     declare
-                        Picked : Call_Names renames Contracts (Pick).Calls;
-
-                     begin
-                        Todo.Conditional.Union
-                          (Picked.Conditional_Calls - Done.Conditional);
-
-                        Todo.Definite.Union
-                          (Picked.Definite_Calls - Done.Definite);
-                     end;
-                  end if;
-
-                  Todo.Definite.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert
-           (Original.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
-
-         Name_Sets.Move (Target => RConditional,
-                         Source => Done.Conditional);
-      end;
-
-      --  Categorize calls: Definite CALLS
-
-      declare
-         Todo : Name_Sets.Set := Original.Definite_Calls;
-         Done : Name_Sets.Set;
-
-      begin
-         loop
-            if not Todo.Is_Empty then
-               declare
-                  Pick : constant Entity_Name :=
-                    Name_Sets.Element (Todo.First);
-
-               begin
-                  Done.Insert (Pick);
-
-                  if Contracts.Contains (Pick) then
-                     Todo.Union (Contracts (Pick).Calls.Definite_Calls - Done);
-                  end if;
-
-                  Todo.Delete (Pick);
-               end;
-            else
-               exit;
-            end if;
-         end loop;
-
-         pragma Assert (Original.Definite_Calls.Is_Subset (Of_Set => Done));
-
-         Name_Sets.Move (Target => RDefinite,
-                         Source => Done);
-      end;
-
-      --  Overlapped conditional and definite calls are intentionally different
-      --  than in slicing.
-      return (Proof_Calls       => RProof - RConditional - RDefinite,
-              Conditional_Calls => RConditional,
-              Definite_Calls    => RDefinite - RConditional);
+      return (Proof_Calls       => O_Proof - O_Conditional - O_Definite,
+              Conditional_Calls => O_Conditional,
+              Definite_Calls    => O_Definite - O_Conditional);
    end Categorize_Calls;
 
    -----------

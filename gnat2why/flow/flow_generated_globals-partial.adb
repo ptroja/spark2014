@@ -553,9 +553,6 @@ package body Flow_Generated_Globals.Partial is
 
       Original : Call_Nodes renames Contracts (E).Globals.Calls;
 
-      RProof, RConditional, RDefinite : Node_Sets.Set;
-
-   begin
       --  Categorization is done in two steps: first, we find subprograms
       --  called definitely, conditionally and in proof contexts and not care
       --  about overlapping (e.g a routine that is called both definitely and
@@ -630,6 +627,10 @@ package body Flow_Generated_Globals.Partial is
       --  proof callee of x. Note: this definitions uses Def and Cond from the
       --  previous ones.
 
+      O_Proof, O_Conditional, O_Definite : Node_Sets.Set;
+      --  Sets for intermediate results, i.e. overlapping sets of calls
+
+   begin
       --  Definitive calls are the easiest to find and the implementation is
       --  fairly straightforward, as it ignores conditional and proof calls.
       --  Note: this could be done with a simple closure of a graph with only
@@ -670,7 +671,7 @@ package body Flow_Generated_Globals.Partial is
 
          pragma Assert (Original.Definite_Calls.Is_Subset (Of_Set => Done));
 
-         Node_Sets.Move (Target => RDefinite,
+         Node_Sets.Move (Target => O_Definite,
                          Source => Done);
       end Find_Definite_Calls;
 
@@ -744,7 +745,7 @@ package body Flow_Generated_Globals.Partial is
          pragma Assert
            (Original.Conditional_Calls.Is_Subset (Of_Set => Done.Conditional));
 
-         Node_Sets.Move (Target => RConditional,
+         Node_Sets.Move (Target => O_Conditional,
                          Source => Done.Conditional);
       end Find_Conditional_Calls;
 
@@ -821,7 +822,7 @@ package body Flow_Generated_Globals.Partial is
 
          pragma Assert (Original.Proof_Calls.Is_Subset (Of_Set => Done.Proof));
 
-         Node_Sets.Move (Target => RProof,
+         Node_Sets.Move (Target => O_Proof,
                          Source => Done.Proof);
       end Find_Proof_Calls;
 
@@ -836,9 +837,9 @@ package body Flow_Generated_Globals.Partial is
       --  contracts; if a callee is called conditionally then we must read its
       --  outputs (and it doesn't matter if it is also called definitively).
 
-      return (Proof_Calls       => RProof - RConditional - RDefinite,
-              Conditional_Calls => RConditional,
-              Definite_Calls    => RDefinite - RConditional);
+      return (Proof_Calls       => O_Proof - O_Conditional - O_Definite,
+              Conditional_Calls => O_Conditional,
+              Definite_Calls    => O_Definite - O_Conditional);
    end Categorize_Calls;
 
    ---------------------
