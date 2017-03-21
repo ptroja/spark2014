@@ -828,6 +828,14 @@ package body Flow_Generated_Globals.Partial is
       --  Finally, overlapping. For proof calls it is just like in slicing.
       --  However, calls that are both conditional and definitive are resolved
       --  in slicing as definitive, but here as conditional.
+      --
+      --  It is because in slicing we are synthesizing contract for the sliced
+      --  subprogram; if its callee is called definitely then its outputs will
+      --  become outputs of the sliced subprogram (and it doesn't matter if it
+      --  is also called conditionally). Here we categorize calls to use their
+      --  contracts; if a callee is called conditionally then we must read its
+      --  outputs (and it doesn't matter if it is also called definitively).
+
       return (Proof_Calls       => RProof - RConditional - RDefinite,
               Conditional_Calls => RConditional,
               Definite_Calls    => RDefinite - RConditional);
