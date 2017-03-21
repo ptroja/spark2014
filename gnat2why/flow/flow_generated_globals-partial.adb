@@ -557,33 +557,38 @@ package body Flow_Generated_Globals.Partial is
 
    begin
       --  Categorization is done in two steps: first, we find subprograms
-      --  called definitely, conditionally and in proof contexts without caring
+      --  called definitely, conditionally and in proof contexts and not care
       --  about overlapping (e.g a routine that is called both definitely and
       --  in proof will be found twice); then we handle overlapping, which is
-      --  necessary to keep things sane, as enforced by the Call_Nodes type
-      --  predicate. The first step is difficult, then overlapping is simple.
+      --  enforced by the Call_Nodes type predicate. The first step is
+      --  difficult, then overlapping is simple.
       --
       --  The first step is relatively easy to specify inductively, but its
-      --  imperative implementation is quite hard to follow. Veryfing it would
+      --  imperative implementation is quite hard to follow. Verifying it would
       --  be very reassuring. So here is a spec, and verification is left as an
-      --  excercise for the reader.
+      --  exercise for the reader.
       --
       --  Notation
       --  ========
       --
       --  Def, Cond and Proof denote sets of subprograms called definitely,
-      --  conditionally and in proof contexts (they might overlap). That we are
-      --  looking for.
+      --  conditionally and in proof contexts (they might overlap),
+      --  respectively. That's what we are looking for.
       --
       --  Def_i, Cond_i and Proof_i denote sets of subprograms called
-      --  "immediately", e.g. as those whose calls appear in the CFG of the
-      --  caller. This what we get in Contracts.
+      --  "immediately", e.g. those whose calls appear in the CFG of the
+      --  caller. That's what we get in Contracts.
       --
-      --  Both the prefixed and unprefixed sets are defined as a relation and
-      --  typed in the curried style typical to proof assistants, e.g.: "Def x
-      --  y" reads as "x will definitely call y" (either immedietely or as an
-      --  effect of a call to some other subprogram, which we typically call
-      --  "p" for proxy).
+      --  Both the prefixed and unprefixed sets are represented as relations
+      --  and typed in the curried style typical to proof assistants, e.g.:
+      --  "Def x y" reads as "x will definitely call y" (either immediately or
+      --  as an effect of a call to some other subprogram, which we typically
+      --  call "p" for proxy).
+      --
+      --  Logical symbols are typed in the style of HOL proof assistant, i.e.
+      --  a \/ b  = "a or b"
+      --  a /\ b  = "a and b"
+      --  ?x. F x = "exists x such that F x"
       --
       --  Specification
       --  =============
@@ -594,9 +599,9 @@ package body Flow_Generated_Globals.Partial is
       --    Def_i x y \/
       --    ?p. Def x p /\ Def_i p y,
       --
-      --  i.e. they are either immediately (and definitely) calleed from x or
+      --  i.e. they are either immediately (and definitely) called from x or
       --  immediately called from some of its definite callees. In other words,
-      --  they are reachable from x through a chain of defnitely called
+      --  they are reachable from x through a chain of definitely called
       --  subprograms.
       --
       --  Subprograms called conditionally are more complicated:
@@ -607,9 +612,9 @@ package body Flow_Generated_Globals.Partial is
       --    (?p. Def x p /\ Cond_i p y),
       --
       --  i.e. they are either immediately (and conditionally) called from x,
-      --  immediately called (conditionally or definitely) from from one of its
+      --  immediately called (conditionally or definitely) from one of its
       --  conditional callees, or immediately (but conditionally) called from
-      --  one of its defniite callees. Note: this definition uses Def from the
+      --  one of its definite callees. Note: this definition uses Def from the
       --  previous one.
       --
       --  And those called in proof context are the most complicated:
@@ -617,7 +622,7 @@ package body Flow_Generated_Globals.Partial is
       --  Proof x y =
       --    Proof_i x y \/
       --    (?p. (Def x p \/ Cond x p) /\ Proof_i p y) \/
-      --    (?p. Proof x p /\ (Def_i p y \/ Cond_i p y \/ Proof_i p y))
+      --    (?p. Proof x p /\ (Def_i p y \/ Cond_i p y \/ Proof_i p y)),
       --
       --  i.e. they are either immediately called from x in a proof context, or
       --  are immediately called from a conditional or definitive callee of x
@@ -626,10 +631,10 @@ package body Flow_Generated_Globals.Partial is
       --  previous ones.
 
       --  Definitive calls are the easiest to find and the implementation is
-      --  fairly straightforward. Conditional and proof calls are simply
-      --  ignored. Note: this could be done with a simple closure of a graph
-      --  with only definitive calls, but we would still need a similar
-      --  traversal to populate such a graph.
+      --  fairly straightforward, as it ignores conditional and proof calls.
+      --  Note: this could be done with a simple closure of a graph with only
+      --  definitive calls, but we would still need a similar traversal to
+      --  populate such a graph.
       --
       --  We maintain two sets: Todo, initialized according to the base case of
       --  the inductive specification; and Done, processed according to the
@@ -669,9 +674,9 @@ package body Flow_Generated_Globals.Partial is
                          Source => Done);
       end Find_Definite_Calls;
 
-      --  Conditional calls are more diffiuclt to find, but the implementation
-      --  is still similar to the previous one. It maintains two sets of
-      --  called subprograms: those called definitevely and those called
+      --  Conditional calls are more difficult to find, but the implementation
+      --  is still similar to the previous one. It maintains two sets of called
+      --  subprograms: those called definitively and those called
       --  conditionally.
 
       Find_Conditional_Calls : declare
@@ -821,7 +826,7 @@ package body Flow_Generated_Globals.Partial is
       end Find_Proof_Calls;
 
       --  Finally, overlapping. For proof calls it is just like in slicing.
-      --  However, calls that are both conditional and defnitive are resolved
+      --  However, calls that are both conditional and definitive are resolved
       --  in slicing as definitive, but here as conditional.
       return (Proof_Calls       => RProof - RConditional - RDefinite,
               Conditional_Calls => RConditional,
