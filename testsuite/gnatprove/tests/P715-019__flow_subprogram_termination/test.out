@@ -133,24 +133,47 @@ formal_cont.ads:12:04: info: function contract not available for proof ("Include
 formal_cont.ads:12:04: info: function contract not available for proof ("Included_In_Union" may not return)
 formal_cont.ads:12:04: info: function contract not available for proof ("Includes_Intersection" may not return)
 formal_cont.ads:12:04: info: function contract not available for proof ("Intersection" may not return)
+formal_cont.ads:12:04: info: function contract not available for proof ("Is_Empty" may not return)
 formal_cont.ads:12:04: info: function contract not available for proof ("No_Overlap" may not return)
 formal_cont.ads:12:04: info: function contract not available for proof ("Num_Overlaps" may not return)
 formal_cont.ads:12:04: info: function contract not available for proof ("Num_Overlaps" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
+formal_cont.ads:12:04: info: implicit function contract not available for proof ("Length" may not return)
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:100
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:109
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:124
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:138
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:151
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:176
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:184
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:191
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:191
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:192
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:192
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:193
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:194
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:194
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:195
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:196
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:210
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:211
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:213
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:214
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:215
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:216
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:222
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:224
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:225
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:226
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:227
@@ -158,13 +181,18 @@ formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:234
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:235
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:236
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:243
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:243
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:244
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:246
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:247
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:247
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:248
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:249
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:250
+formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:50
 formal_cont.ads:12:04: info: in instantiation at a-cofuse.ads:94
-formal_cont.ads:18:14: info: subprogram "Test_01" will terminate
 formal_cont.ads:18:14: warning: subprogram "Test_01" has no effect
+formal_cont.ads:18:14: warning: subprogram "Test_01" might not terminate
 formal_cont.ads:23:13: info: subprogram "My_Equal_02" will terminate
 formal_cont.ads:32:14: info: subprogram "Test_02" will terminate
 formal_cont.ads:32:14: warning: subprogram "Test_02" has no effect

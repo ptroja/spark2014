@@ -489,6 +489,44 @@ package body Flow_Generated_Globals.Partial is
             Contr.Direct_Calls := Contract_Calls (E);
          end if;
 
+         --  For subprograms in a generic predefined unit with its body not
+         --  in SPARK, we also register actual subprogram parameters of its
+         --  instantiation, except for predefined arithmetic operators, because
+         --  they are irrelevant.
+         if Ekind (E) in E_Function | E_Procedure
+           and then In_Predefined_Unit (E)
+         then
+            declare
+               Enclosing_Instance : Entity_Id := E;
+
+            begin
+               loop
+                  Enclosing_Instance :=
+                    Enclosing_Generic_Instance (Enclosing_Instance);
+
+                  if Present (Enclosing_Instance) then
+                     for S of Generic_Actual_Subprograms
+                       (Enclosing_Instance)
+                     loop
+                        case Ekind (S) is
+                           when E_Function | E_Procedure =>
+                              Contr.Direct_Calls.Include (S);
+
+                           when E_Operator =>
+                              pragma Assert
+                                (In_Predefined_Unit (S));
+
+                           when others =>
+                              raise Program_Error;
+                        end case;
+                     end loop;
+                  else
+                     exit;
+                  end if;
+               end loop;
+            end;
+         end if;
+
          --  We register subprograms with body not in SPARK as nonreturning
          --  except when they are:
          --  * predefined (or are instances of predefined subprograms)
