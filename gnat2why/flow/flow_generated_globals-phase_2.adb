@@ -925,7 +925,7 @@ package body Flow_Generated_Globals.Phase_2 is
          begin
             --  First collect SPARK-compliant protected operations in the
             --  current compilation unit.
-            for E of Marked_Entities loop
+            for E of Entities_To_Translate loop
                if (Ekind (E) = E_Entry
                    or else (Ekind (E) in E_Function | E_Procedure
                             and then Convention (E) = Convention_Protected))
@@ -992,27 +992,9 @@ package body Flow_Generated_Globals.Phase_2 is
               Subprogram_Call_Graph;
             --  A short alias for a long name
 
-            procedure Seed_Call_Graph (E : Entity_Id)
-            with Pre => Ekind (E) in Container_Scope;
-
-            ---------------------
-            -- Seed_Call_Graph --
-            ---------------------
-
-            procedure Seed_Call_Graph (E : Entity_Id) is
-            begin
-               --  Seed the call graph with entities that might be called from
-               --  somewhere, either because they are proper subroutines or
-               --  because they are packages "called" from the elaboration.
-               --  ??? I am not sure about packages nested in subprograms;
-               --  their "remote_calls" should be propagated to their enclosing
-               --  subprograms, I think (but I don't this this happens now).
-               if (Ekind (E) in Entry_Kind | E_Function | E_Procedure
-                     or else
-                   (Ekind (E) = E_Package
-                      and then Is_Library_Level_Entity (E)))
-                 and then Entity_In_SPARK (E)
-               then
+         begin
+            for E of Entities_To_Translate loop
+               if Ekind (E) in E_Function | E_Procedure | E_Entry then
                   declare
                      E_Name : constant Entity_Name := To_Entity_Name (E);
                   begin
@@ -1020,12 +1002,7 @@ package body Flow_Generated_Globals.Phase_2 is
                      Call_Graph.Add_Vertex (E_Name);
                   end;
                end if;
-            end Seed_Call_Graph;
-
-         --  Start of processing for Add_Subprogram_Edges
-
-         begin
-            Iterate_Main_Unit (Seed_Call_Graph'Access);
+            end loop;
 
             --  Then create a call graph for them
             while not Stack.Is_Empty loop
@@ -1075,10 +1052,8 @@ package body Flow_Generated_Globals.Phase_2 is
             --  A short alias for a long name
 
          begin
-            for E of Marked_Entities loop
-               if Ekind (E) in E_Function | E_Procedure | E_Entry
-                 and then Entity_In_SPARK (E)
-               then
+            for E of Entities_To_Translate loop
+               if Ekind (E) in E_Function | E_Procedure | E_Entry then
                   declare
                      E_Name : constant Entity_Name := To_Entity_Name (E);
                   begin
@@ -1156,7 +1131,7 @@ package body Flow_Generated_Globals.Phase_2 is
          begin
             --  First collect SPARK-compliant protected operations, task types
             --  and main-like subprograms in the current compilation unit.
-            for E of Marked_Entities loop
+            for E of Entities_To_Translate loop
                if (case Ekind (E) is
                       when E_Entry | E_Task_Type =>
                          True,
