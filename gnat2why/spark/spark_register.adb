@@ -29,7 +29,6 @@ with Einfo;                  use Einfo;
 with Sem_Util;               use Sem_Util;
 with Sinfo;                  use Sinfo;
 with SPARK_Frame_Conditions; use SPARK_Frame_Conditions;
-with SPARK_Util;             use SPARK_Util;
 with SPARK_Util.Subprograms; use SPARK_Util.Subprograms;
 
 package body SPARK_Register is
@@ -223,28 +222,13 @@ package body SPARK_Register is
 
          --  Register dispatching operations, because they might be called only
          --  implicitly and we miss such calls in the above code.
-         --  ??? perhaps this is only needed for current compilation unit
-         --
-         --  Anyway, abuse this code to register all declarations from the
-         --  current compilation unit. This allows to reuse code for Flow_Scope
-         --  visibility when resolving generated globals in phase 2.
 
-         if Nkind (N) in N_Subprogram_Declaration | N_Entry_Declaration
-             or else
-           (Nkind (N) = N_Subprogram_Body
-            and then (Acts_As_Spec (N)
-                        or else
-                      (Nkind (Parent (N)) = N_Subunit and then
-                       Is_Subprogram_Stub_Without_Prior_Declaration
-                          (Corresponding_Stub (Parent (N))))))
-         then
+         if Nkind (N) = N_Subprogram_Declaration then
             declare
-               E : constant Entity_Id := Unique_Defining_Entity (N);
+               E : constant Entity_Id := Defining_Entity (N);
 
             begin
-               if Is_Dispatching_Operation (E)
-                 or else Is_In_Analyzed_Files (E)
-               then
+               if Is_Dispatching_Operation (E) then
                   Register_Entity (E);
                end if;
             end;
