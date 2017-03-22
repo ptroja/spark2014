@@ -23,7 +23,6 @@
 ------------------------------------------------------------------------------
 
 with GNATCOLL.Symbols; use GNATCOLL.Symbols;
-with Output;           use Output;
 with Sem_Util;         use Sem_Util;
 with SPARK_Xrefs;      use SPARK_Xrefs;
 
@@ -54,21 +53,6 @@ package body Common_Containers is
    Symbol_Cache : Symbol_To_Entity_Name_Maps.Map;
    String_Cache : Entity_Name_To_Symbol_Maps.Map;
    Name_Cache   : Entity_Id_To_Entity_Name_Maps.Map;
-
-   ------------
-   -- pnames --
-   ------------
-
-   procedure pnames (S : Name_Sets.Set) is
-   begin
-      if S.Is_Empty then
-         Write_Line ("<empty>");
-      else
-         for N of S loop
-            Write_Line (To_String (N));
-         end loop;
-      end if;
-   end pnames;
 
    --------------------
    -- To_Entity_Name --

@@ -120,10 +120,6 @@ package Common_Containers is
       Hash                => Name_Hash,
       Equivalent_Elements => "=");
 
-   procedure pnames (S : Name_Sets.Set);
-   pragma Export (Ada, pnames);
-   --  Print set of nodes; for use in gdb
-
    package Name_Maps is new Ada.Containers.Hashed_Maps
      (Key_Type        => Entity_Name,
       Element_Type    => Entity_Name,
