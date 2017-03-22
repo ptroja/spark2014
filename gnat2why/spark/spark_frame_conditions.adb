@@ -443,7 +443,7 @@ package body SPARK_Frame_Conditions is
    -- Computed_Calls --
    --------------------
 
-   function Computed_Calls (E : Entity_Name) return Name_Sets.Set
+   function Computed_Calls (E_Name : Entity_Name) return Name_Sets.Set
      renames Calls.Element;
 
    --------------------

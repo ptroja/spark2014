@@ -22,7 +22,6 @@
 ------------------------------------------------------------------------------
 
 with Ada.Containers.Doubly_Linked_Lists;
-with Ada.Text_IO;
 
 with Namet;                              use Namet;
 with Nlists;                             use Nlists;
@@ -5784,34 +5783,6 @@ package body Flow.Control_Flow_Graph is
                   Writes    : Flow_Id_Sets.Set;
                   Globals   : Global_Maps.Map := Global_Maps.Empty_Map;
 
-                  Debug : constant Boolean := False;
-
-                  procedure Dump (Label : String; Vars : Flow_Id_Sets.Set);
-
-                  ----------
-                  -- Dump --
-                  ----------
-
-                  procedure Dump (Label : String; Vars : Flow_Id_Sets.Set) is
-                     Indent : constant String := "  ";
-                  begin
-                     if not Vars.Is_Empty then
-                        Ada.Text_IO.Put_Line (Indent & Label & ":");
-                        for Var of Vars loop
-                           case Var.Kind is
-                              when Direct_Mapping =>
-                                 Ada.Text_IO.Put_Line
-                                   (Indent & Indent &
-                                      Full_Source_Name
-                                        (Get_Direct_Mapping_Id (Var)));
-
-                              when others =>
-                                 raise Program_Error;
-                           end case;
-                        end loop;
-                     end if;
-                  end Dump;
-
                begin
                   Get_Globals (Subprogram => FA.Analyzed_Entity,
                                Scope      => FA.B_Scope,
@@ -5819,18 +5790,6 @@ package body Flow.Control_Flow_Graph is
                                Proof_Ins  => Proof_Ins,
                                Reads      => Reads,
                                Writes     => Writes);
-
-                  if Debug then
-                     if not Proof_Ins.Is_Empty
-                       and then not Reads.Is_Empty
-                       and then not Writes.Is_Empty
-                     then
-                        Ada.Text_IO.Put_Line (Unique_Name (FA.Spec_Entity));
-                        Dump ("Proof_Ins", Proof_Ins);
-                        Dump ("Inputs",    Reads);
-                        Dump ("Outputs",   Writes);
-                     end if;
-                  end if;
 
                   for G of Proof_Ins loop
                      Globals.Insert (Change_Variant (G, Normal_Use),
