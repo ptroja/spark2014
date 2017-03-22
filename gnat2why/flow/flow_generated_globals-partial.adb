@@ -2,11 +2,11 @@
 --                                                                          --
 --                            GNAT2WHY COMPONENTS                           --
 --                                                                          --
---                                 F L O W                                  --
+--        F L O W . G E N E R A T E D _ G L O B A L S . P A R T I A L       --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
---                  Copyright (C) 2013-2017, Altran UK Limited              --
+--                  Copyright (C) 2016-2017, Altran UK Limited              --
 --                                                                          --
 -- gnat2why is  free  software;  you can redistribute  it and/or  modify it --
 -- under terms of the  GNU General Public License as published  by the Free --

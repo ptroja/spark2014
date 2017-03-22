@@ -2,7 +2,7 @@
 --                                                                          --
 --                            GNAT2WHY COMPONENTS                           --
 --                                                                          --
---                                 F L O W                                  --
+--     F L O W . G E N E R A T E D _ G L O B A L S . T R A V E R S A L      --
 --                                                                          --
 --                                 B o d y                                  --
 --                                                                          --
@@ -22,9 +22,9 @@
 ------------------------------------------------------------------------------
 
 with Ada.Text_IO;
-with Nlists;                     use Nlists;
-with Sem_Util;                   use Sem_Util;
-with Sinfo;                      use Sinfo;
+with Nlists;      use Nlists;
+with Sem_Util;    use Sem_Util;
+with Sinfo;       use Sinfo;
 
 package body Flow_Generated_Globals.Traversal is
 
