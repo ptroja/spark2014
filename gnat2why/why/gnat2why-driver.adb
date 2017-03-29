@@ -516,17 +516,34 @@ package body Gnat2Why.Driver is
             Proof_Done := True;
             Load_Codepeer_Results;
             Timing_Phase_Completed (Timing, "codepeer results");
+
             Why.Atree.Modules.Initialize;
             Init_Why_Sections;
             Timing_Phase_Completed (Timing, "init_why_sections");
+
             Translate_Standard_Package;
             Timing_Phase_Completed (Timing, "translation of standard");
+
             Translate_CUnit;
             Timing_Phase_Completed (Timing, "translation of compilation unit");
-            Run_Gnatwhy3;
+
+            if Has_Registered_VCs then
+               Print_Why_File;
+
+               --  After printing the .mlw file the memory consumed by the Why3
+               --  AST is no longer needed; give it back to OS, so that provers
+               --  can use it. When not printing the .mlw file just do nothing;
+               --  there is almost nothing left to do and there is no point to
+               --  waste time on manually releasing memory.
+               Why.Atree.Tables.Free;
+
+               Run_Gnatwhy3;
+            end if;
+
             if Gnat2Why_Args.Limit_Line = Null_Unbounded_String then
                Generate_Useless_Pragma_Annotate_Warnings;
             end if;
+
             Timing_Phase_Completed (Timing, "proof");
          end if;
          Create_JSON_File (Proof_Done);
@@ -677,19 +694,17 @@ package body Gnat2Why.Driver is
 
       Gnat2Why_Args.Why3_Args.Delete_First (1);
 
-      if Has_Registered_VCs then
-         Set_Directory (To_String (Gnat2Why_Args.Why3_Dir));
+      Set_Directory (To_String (Gnat2Why_Args.Why3_Dir));
 
-         Parse_Why3_Results
-           (GNAT.Expect.Get_Command_Output
-              (Command,
-               Call.Argument_List_Of_String_List (Gnat2Why_Args.Why3_Args),
-               Err_To_Out => False,
-               Input      => "",
-               Status     => Status'Access),
-            Timing);
-         Set_Directory (Old_Dir);
-      end if;
+      Parse_Why3_Results
+        (GNAT.Expect.Get_Command_Output
+           (Command,
+            Call.Argument_List_Of_String_List (Gnat2Why_Args.Why3_Args),
+            Err_To_Out => False,
+            Input      => "",
+            Status     => Status'Access),
+         Timing);
+      Set_Directory (Old_Dir);
    end Run_Gnatwhy3;
 
    ---------------------
@@ -775,12 +790,6 @@ package body Gnat2Why.Driver is
       --  and expression functions are defined.
 
       For_All_Entities (Generate_VCs'Access);
-
-      Print_Why_File;
-
-      --  After printing the .mlw file the memory consumed by the Why3 AST is
-      --  no longer needed; give it back to OS, so that provers can use it.
-      Why.Atree.Tables.Free;
    end Translate_CUnit;
 
    ----------------------
