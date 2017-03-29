@@ -637,7 +637,6 @@ package Flow_Types is
       --  Some extra information which we use when deciding how to pretty
       --  print the vertex in --flow-debug mode.
    end record;
-   pragma Pack (V_Attributes);
 
    Null_Attributes : constant V_Attributes :=
      V_Attributes'(Is_Null_Node                    => False,
