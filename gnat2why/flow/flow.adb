@@ -45,7 +45,6 @@ with Gnat2Why.Assumptions;             use Gnat2Why.Assumptions;
 with Gnat2Why_Args;
 with Lib;                              use Lib;
 with Namet;                            use Namet;
-with Nlists;                           use Nlists;
 with Osint;                            use Osint;
 with Opt;                              use Opt;
 with Output;                           use Output;
@@ -96,11 +95,6 @@ package body Flow is
 
    procedure Build_Graphs_For_Analysis (FA_Graphs : out Analysis_Maps.Map);
    --  Build flow graphs for the current compilation unit; phase 2
-
-   function Last_Statement_Is_Raise (E : Entity_Id) return Boolean
-   with Pre => Ekind (E) in E_Entry | E_Function | E_Procedure | E_Task_Type;
-   --  Returns True if the last statement in the
-   --  Handled_Sequence_Of_Statements of E is an N_Raise_Statement.
 
    -------------------------
    -- Add_To_Temp_String  --
@@ -1017,8 +1011,6 @@ package body Flow is
                when E_Task_Type => True,
                when others      => raise Program_Error);
 
-            FA.Last_Statement_Is_Raise := Last_Statement_Is_Raise (E);
-
             FA.Depends_N := Find_Contract (E, Pragma_Depends);
             FA.Global_N  := Find_Contract (E, Pragma_Global);
 
@@ -1492,16 +1484,5 @@ package body Flow is
       return Ada.Containers.Hash_Type (E.Obj)  * 17
            + Ada.Containers.Hash_Type (E.Entr) * 19;
    end Hash;
-
-   -----------------------------
-   -- Last_Statement_Is_Raise --
-   -----------------------------
-
-   function Last_Statement_Is_Raise (E : Entity_Id) return Boolean is
-      Last_Statement : constant Node_Id :=
-        Last (Statements (Handled_Statement_Sequence (Get_Body (E))));
-   begin
-      return Nkind (Last_Statement) in N_Raise_xxx_Error | N_Raise_Statement;
-   end Last_Statement_Is_Raise;
 
 end Flow;
