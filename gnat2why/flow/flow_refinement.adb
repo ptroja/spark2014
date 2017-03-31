@@ -486,35 +486,38 @@ package body Flow_Refinement is
       ------------
 
       procedure Expand (E : Entity_Id) is
-         Possible_Hidden_Components : Boolean := False;
       begin
          if Present (E) then
             case Ekind (E) is
                when E_Abstract_State =>
-                  if State_Refinement_Is_Visible (E, S) then
-                     for C of Iter (Refinement_Constituents (E)) loop
-                        if Nkind (C) /= N_Null then
-                           Expand (C);
-                        end if;
-                     end loop;
-                  else
-                     Possible_Hidden_Components := True;
-                  end if;
-
-                  for C of Iter (Part_Of_Constituents (E)) loop
-                     if Is_Visible (C, S) then
-                        Expand (C);
+                  declare
+                     Possible_Hidden_Components : Boolean := False;
+                  begin
+                     if State_Refinement_Is_Visible (E, S) then
+                        for C of Iter (Refinement_Constituents (E)) loop
+                           if Nkind (C) /= N_Null then
+                              Expand (C);
+                           end if;
+                        end loop;
                      else
                         Possible_Hidden_Components := True;
                      end if;
-                  end loop;
 
-                  if Possible_Hidden_Components then
-                     --  We seem to have an abstract state which has no
-                     --  refinement, or where we have unexpanded state.
-                     --  Lets include the abstract state itself.
-                     P.Include (E);
-                  end if;
+                     for C of Iter (Part_Of_Constituents (E)) loop
+                        if Is_Visible (C, S) then
+                           Expand (C);
+                        else
+                           Possible_Hidden_Components := True;
+                        end if;
+                     end loop;
+
+                     if Possible_Hidden_Components then
+                        --  We seem to have an abstract state which has no
+                        --  refinement, or where we have unexpanded state. Lets
+                        --  include the abstract state itself.
+                        P.Include (E);
+                     end if;
+                  end;
 
                when others =>
                   P.Include (E);
