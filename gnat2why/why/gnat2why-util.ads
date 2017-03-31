@@ -179,8 +179,7 @@ package Gnat2Why.Util is
    --     parameter, which means essentially converting predicate to term.
 
    type W_Section_Id is
-     (WF_Float_Literals,
-      WF_Pure,
+     (WF_Pure,
       WF_Variables,
       WF_Context,
       WF_Main);
@@ -337,21 +336,6 @@ package Gnat2Why.Util is
    --  Returns the precondition or postcondition (depending on Kind) for a
    --  static call.
 
-   function Cast_Real_Literal
-     (E  : Node_Id;
-      Ty : W_Type_Id) return W_Integer_Constant_Id
-     with Pre => Why_Type_Is_Float (Ty)
-     and Has_Floating_Point_Type (Etype (E));
-   --  Cast a real constant (literal) into either a float32 or a float64,
-   --  This function will do the actual computation in order to produce
-   --  a float_constant from a real_constant, i.e., a bitstream for a ureal.
-   --  Note: the function might fail if the format of Rval(E) is not as
-   --  expected.
-   --  @param E The node of the literal, expected to be rounded.
-   --  @param Ty The type of the literal.
-   --  @return An integer constant of bit representation equal to the float
-   --          literal
-
    -------------
    -- Queries --
    -------------
@@ -390,6 +374,13 @@ package Gnat2Why.Util is
         and then Is_Type (Get_Component_Set (E).First_Element));
    --  @param E type.
    --  @return True if E is a private type with only a single private field.
+
+   function Count_Discriminants (E : Entity_Id) return Natural with
+     Pre  => Is_Type (E);
+   --  @param E type.
+   --  @return the number of discriminants visible in the Retysp of E
+   --  In the translation to Why, use Count_Discriminants instead of
+   --  Has_Discriminant to avoid counting hidden discriminants.
 
    function Expression_Depends_On_Variables (N : Node_Id) return Boolean;
    --  Returns whether the expression E depends on a variable, either directly,

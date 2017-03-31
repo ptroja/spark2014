@@ -25,7 +25,6 @@
 
 with Ada.Strings;                use Ada.Strings;
 with Ada.Strings.Fixed;          use Ada.Strings.Fixed;
-with Eval_Fat;
 with Exp_Util;                   use Exp_Util;
 with Flow_Types;
 with Flow_Utility;
@@ -41,9 +40,7 @@ with SPARK_Definition;           use SPARK_Definition;
 with SPARK_Frame_Conditions;     use SPARK_Frame_Conditions;
 with SPARK_Util.External_Axioms; use SPARK_Util.External_Axioms;
 with SPARK_Util.Subprograms;     use SPARK_Util.Subprograms;
-with Stand;                      use Stand;
 with String_Utils;               use String_Utils;
-with Urealp;                     use Urealp;
 with Why.Atree.Builders;         use Why.Atree.Builders;
 with Why.Atree.Modules;          use Why.Atree.Modules;
 with Why.Conversions;            use Why.Conversions;
@@ -486,6 +483,32 @@ package body Gnat2Why.Util is
       return Compute_Spec (Params, Nodes, Domain);
    end Compute_Spec;
 
+   -------------------------
+   -- Count_Discriminants --
+   -------------------------
+
+   function Count_Discriminants (E : Entity_Id) return Natural is
+   begin
+      if not Has_Discriminants (E)
+        and then not Has_Unknown_Discriminants (E)
+      then
+         return 0;
+      end if;
+
+      declare
+         Discr : Entity_Id := First_Discriminant (E);
+         Count : Natural := 0;
+      begin
+         while Present (Discr) loop
+            if Is_Not_Hidden_Discriminant (Discr) then
+               Count := Count + 1;
+            end if;
+            Next_Discriminant (Discr);
+         end loop;
+         return Count;
+      end;
+   end Count_Discriminants;
+
    ------------------------------
    -- Count_Why_Regular_Fields --
    ------------------------------
@@ -518,7 +541,7 @@ package body Gnat2Why.Util is
       --  sub-record by copy instead of by reference (with the split version
       --  of the record).
 
-      if Has_Discriminants (E) then
+      if Count_Discriminants (E) > 0 then
          Count := Count + 1;
       end if;
 
@@ -534,7 +557,9 @@ package body Gnat2Why.Util is
       --  Directly store the attr__constrained and __tag fields in the record,
       --  as these fields cannot be modified after object creation.
 
-      if Has_Defaulted_Discriminants (E) then
+      if Count_Discriminants (E) > 0
+        and then Has_Defaulted_Discriminants (E)
+      then
          Count := Count + 1;
       end if;
 
@@ -770,284 +795,6 @@ package body Gnat2Why.Util is
       return +Get_Static_Call_Contract (Params, E, Kind, EW_Pred);
    end Get_Static_Call_Contract;
 
-   ------------------------
-   --  Cast_Real_Literal --
-   ------------------------
-
-   function Cast_Real_Literal (E  : Node_Id;
-                               Ty : W_Type_Id) return W_Integer_Constant_Id
-   is
-      function Ureal_To_Bitstream (Rval : Ureal; Ty : W_Type_Id) return Uint;
-      --  This function returns the bit representation of a float as an integer
-      --  constant. Note that it is not returned as a bit-vector in order to
-      --  not have systematically a theory of bit-vectors in the context
-      --  whenever a float literal appears in a VC.
-      --  @param Rval The real value of the float, it is expected to be rounded
-      --  @param Ty The type of the float, either EW_Float_32_Type or
-      --         EW_Float_64_Type
-      --  @return An integer constant with the same bit representation as the
-      --          float constant.
-
-      function Ureal_To_Bitstream
-        (Rval : Ureal;
-         Ty   : W_Type_Id) return Uint
-      is
-         Base : constant Nat := Rbase (Rval);
-         Den  : Uint := Denominator (Rval);
-         Num  : Uint := Numerator (Rval);
-
-         --  Rval = num * Base ** (- Den)
-
-         --  This code is not complete with regard to the frontend, we only
-         --  accept the "format" described below and will raise an error if it
-         --  is not the case. Those constraints are based on what the frontend
-         --  as given us so far. This needs to be completed !!!
-
-         --  We expect the frontend to give us Rval in a format such that :
-         --  - Base is either 2 or 16 (exept for 0 in base 10)
-         --  - Den is greater to ebias + sig_size - 1
-         --    or equal if Rval is a denormal
-         --  - Num is smaller than Base**(Sig_Size+1)
-         --  - Num is greater than Base**Sig_Size if Rval is normal
-         --  All other cases should raise an error
-
-         --  Denormal of base 16 are not treated as they apparently are not
-         --  provided by the frontend
-
-         --  Next we consider the exponent bias (= max exponent value) and the
-         --  size of the significand defined in the IEEE format, i.e.,
-         --  for 32 bit floats we have:
-         --  + 24 bits, counting the hidden bit, in the mantissa,
-         --  + 8 exponent bits, the exponent bias is then 2 ** 7 - 1 = 127.
-         --  For 64 bit floats we have:
-         --  + 53 bits, counting the hidden bit, in the mantissa,
-         --  + 11 exponent bits, the exponent bias is then 2 ** 10 - 1 = 1023.
-
-         Ebias : constant Nat := (if Ty = EW_Float_32_Type then
-                                    127
-                                 else
-                                    1023);
-
-         --  the exponent bias
-
-         Sig_Size : constant Nat := (if Ty = EW_Float_32_Type then
-                                        23
-                                     else
-                                        52);
-
-         --  the size of the significand (or mantissa)
-
-         Size : constant Int := (if Ty = EW_Float_32_Type
-                                 then 32
-                                 else 64);
-
-         --  the bit of sign
-
-         Sign_Bit : constant Uint := (if UR_Is_Negative (Rval) then
-                                         UI_Expon (Uint_2, Size - 1)
-                                      else Uint_0);
-
-         --  the value of the exponent for subnormals
-
-         Subnormal_Exp : constant Uint := Ebias - Uint_1 + Sig_Size;
-
-         Exppat : Uint;
-         Bitpat : Uint;
-      begin
-
-         --  Deal with zero first as it is an easy case
-
-         if UR_Eq (Rval, Ureal_0) then
-            return Sign_Bit;
-         end if;
-
-         --  Fail on unexpected base
-
-         if Base not in 2 | 10 | 16 then
-            raise Program_Error;
-         end if;
-
-         --  Check that Num fit inside the significand.
-
-         if (Base = 2 and UI_Ge (Num, UI_Expon (Uint_2, Sig_Size + 1)))
-           or else
-            (Base = 16 and
-             UI_Ge (Num, UI_Expon (Uint_16, (Sig_Size / 4) + 1)))
-         then
-            raise Program_Error;
-         end if;
-
-         --  Now deal with the remaining cases
-
-         if Base = 10 then
-
-            --  In case of base 10 rval we recast it in base 2 through
-            --  Eval_Fat.Machine and don't directly send the pattern
-            --  in order to check it with the original rval in base 10.
-            --  This will most probably be incorrect for subnormals !
-            --  ??? Investigate which cases need this treatment
-
-            Bitpat := Ureal_To_Bitstream
-              (Rval  => Eval_Fat.Machine (RT    => (if Ty = EW_Float_32_Type
-                                                    then Standard_Float
-                                                    else Standard_Long_Float),
-                                          X     => Rval,
-                                          Mode  => Eval_Fat.Round_Even,
-                                          Enode => E),
-               Ty => Ty);
-
-         elsif Base = 2 and (UI_Lt (Num, UI_Expon (Uint_2, Sig_Size)))
-         then
-
-            --  We deal with subnormals for base 2
-
-            if not UI_Eq (Den, Subnormal_Exp) then
-
-               --  If Rval is not in the expected form, raise an error
-
-               raise Program_Error;
-            end if;
-
-            Bitpat := Num + Sign_Bit;
-
-         elsif Base = 2 and (UI_Gt (Den, Subnormal_Exp)) then
-
-            --  second format for subnormals
-
-            --  Here we expect subnormal of the form
-            --    2^sig_size <= Num < 2^(sig_size+1)
-            --    Ebias + 2 * Sig_Size - 1 >= Den > Ebias + Sig_Size
-            --  for example
-            --  Succ'(0.0) = 2^sig_size * 2^-(Ebias + 2 * sig_size - 1)
-
-            declare
-               Max_Den : constant Uint := Ebias + 2 * Sig_Size - Uint_1;
-            begin
-               pragma Assert (UI_Le (Den, Max_Den));
-
-               Bitpat := UI_Div (Num,
-                                 UI_Expon (Uint_2, Den - Subnormal_Exp));
-
-               pragma Assert
-                 (Num = Bitpat * UI_Expon (Uint_2, Den - Subnormal_Exp));
-            end;
-
-         elsif Base = 16 and (UI_Lt (Num, UI_Expon (Uint_2, Sig_Size)))
-         then
-
-            --  subnormal of base 16 are not expected
-
-            raise Program_Error;
-
-         else
-
-            --  We're left to deal with normals
-
-            --  invert the sign of the exponent : we want a multiplication,
-            --  not a division.
-
-            Den := UI_Negate (Den);
-
-            --  change of base for rval of base 16
-
-            if Base = 16 then
-               Den := UI_Mul (Uint_4, Den);
-
-               --  in this case it happens that num is bigger than
-               --  2 ^ (sig_size + 1), in which case we divide it by two until
-               --  we get num in the expected range.
-
-               while UI_Ge (Num, UI_Expon (Uint_2, Sig_Size + 1)) loop
-                  Num := UI_Div (Num, Uint_2);
-                  Den := UI_Add (Den, Uint_1);
-               end loop;
-
-               if UI_Le (Den, -(Ebias + Sig_Size)) then
-
-                  --  check that we're not dealing with a subnormal value
-
-                  raise Program_Error;
-
-               end if;
-            end if;
-
-            --  compute the pattern for the exponent
-
-            Exppat := Ebias + Den + Sig_Size;
-
-            --  remove the implicit most significand bit of the significand
-
-            Bitpat := (Num - UI_Expon (Uint_2, Sig_Size));
-
-            --  add the exponent pattern and sign bit to complete the bit
-            --  pattern
-
-            Bitpat := Bitpat
-              + Exppat * UI_Expon (Uint_2, Sig_Size)
-              + Sign_Bit;
-
-         end if;
-
-         pragma Assert (0 <= Bitpat and Bitpat < UI_Expon (2, Size));
-
-         declare
-            --  Here we compute back the real value from the pattern that we
-            --  just produced in order to add some guaranty to this process.
-
-            --  the bit of sign
-
-            NB : constant Uint := UI_Div (Bitpat, UI_Expon (Uint_2, Size - 1));
-
-            --  the exponent
-
-            D  : constant Uint := UI_Div (Bitpat - UI_Mul (NB,
-                                          UI_Expon (Uint_2, Size - 1)),
-                                          UI_Expon (Uint_2, Sig_Size));
-
-            --  the significand
-
-            N  : constant Uint := Bitpat
-              - UI_Mul (NB, UI_Expon (Uint_2, Size - 1))
-              - UI_Mul (D,  UI_Expon (Uint_2, Sig_Size));
-
-            --  to compute the real value there are two cases:
-            --  + either D is zero, which means that the value is subnormal
-            --    since we allready dealt with zero;
-            --  + or it is not, in which case we have a normal value.
-
-            Bitpat_R : constant Ureal :=
-              (if UI_Eq (D, Uint_0) then
-                    UR_From_Components
-                 (Num      => N,
-                  Den      => Subnormal_Exp,
-                  Rbase    => 2,
-                  Negative => (NB = 1))
-               else
-                  UR_From_Components
-                 (Num      => N + UI_Expon (Uint_2, Sig_Size),
-                  Den      => -(D - Ebias - Sig_Size),
-                  Rbase    => 2,
-                  Negative => (NB = 1)));
-         begin
-
-            --  let's look for some guaranty of correctness !
-
-            if not (UR_Eq (Rval, Bitpat_R)) then
-               raise Program_Error;
-            end if;
-         end;
-
-         return Bitpat;
-
-      end Ureal_To_Bitstream;
-
-   begin
-      return New_Integer_Constant
-        (Ada_Node => E,
-         Value    => Ureal_To_Bitstream (Rval => Realval (E),
-                                         Ty   => Ty));
-   end Cast_Real_Literal;
-
    -----------------------
    -- Init_Why_Sections --
    -----------------------
@@ -1244,7 +991,7 @@ package body Gnat2Why.Util is
       Ty : constant Entity_Id := Retysp (E);
    begin
       return Is_Private_Type (Ty)
-        and then not Has_Discriminants (Ty)
+        and then Count_Discriminants (Ty) = 0
         and then not Is_Tagged_Type (Ty);
    end Is_Simple_Private_Type;
 
@@ -1410,14 +1157,14 @@ package body Gnat2Why.Util is
            --  For constrained types with discriminants, we supply the value
            --  of the discriminants.
 
-           or else (Has_Discriminants (Ty_Ext)
+           or else (Count_Discriminants (Ty_Ext) > 0
                      and then Is_Constrained (Ty_Ext))
 
            --  For component types with defaulted discriminants, we know the
            --  discriminants have their default value.
 
            or else (not Top_Level
-                     and then Has_Discriminants (Ty_Ext)
+                     and then Count_Discriminants (Ty_Ext) > 0
                      and then Has_Defaulted_Discriminants (Ty_Ext))
 
            --  We need an invariant for type predicates
@@ -1443,7 +1190,7 @@ package body Gnat2Why.Util is
            or else Is_Private_Type (Ty_Ext)
            or else Is_Concurrent_Type (Ty_Ext)
          then
-            if Has_Discriminants (Ty_Ext) then
+            if Count_Discriminants (Ty_Ext) > 0 then
                declare
                   Discr : Entity_Id := First_Discriminant (Ty_Ext);
                begin
