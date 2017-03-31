@@ -919,6 +919,16 @@ package body Flow_Utility is
                       Writes              => All_Writes,
                       Use_Deduced_Globals => Use_Computed_Globals);
 
+         --  Remove generic formals without variable input
+         Remove_Constants (All_Proof_Ins, Only_Generic_Formals => True);
+         Remove_Constants (All_Reads,     Only_Generic_Formals => True);
+         Remove_Constants (All_Writes,    Only_Generic_Formals => True);
+
+         --  Change all variants to Normal_Use
+         All_Proof_Ins := Change_Variant (All_Proof_Ins, Normal_Use);
+         All_Reads     := Change_Variant (All_Reads,     Normal_Use);
+         All_Writes    := Change_Variant (All_Writes,    Normal_Use);
+
          --  Add formal parameters
          for Param of Get_Formals (Subprogram) loop
             declare
@@ -954,24 +964,13 @@ package body Flow_Utility is
             All_Writes.Insert (Direct_Mapping_Id (Subprogram));
          end if;
 
-         --  Change all variants to Normal_Use
-         All_Proof_Ins := Change_Variant (All_Proof_Ins, Normal_Use);
-         All_Reads     := Change_Variant (All_Reads, Normal_Use);
-         All_Writes    := Change_Variant (All_Writes, Normal_Use);
-
-         --  Remove generic formals without variable input
-         Remove_Constants (All_Proof_Ins, Only_Generic_Formals => True);
-         Remove_Constants (All_Reads,     Only_Generic_Formals => True);
-         Remove_Constants (All_Writes,    Only_Generic_Formals => True);
-
          for C in Contract_Relation.Iterate loop
             declare
                D_Out : constant Flow_Id_Sets.Set :=
                  (if Present (Dependency_Maps.Key (C)) then
                      To_Flow_Id_Set (Down_Project
-                                       (Node_Sets.To_Set
-                                          (Get_Direct_Mapping_Id
-                                             (Dependency_Maps.Key (C))),
+                                       (Get_Direct_Mapping_Id
+                                          (Dependency_Maps.Key (C)),
                                         Scope))
                   else
                      Flow_Id_Sets.To_Set (Dependency_Maps.Key (C)));
@@ -986,7 +985,7 @@ package body Flow_Utility is
                      D_In.Intersection (if O = Null_Flow_Id
                                         then All_Proof_Ins
                                         else All_Reads);
-                     Depends.Include (O, D_In);
+                     Depends.Insert (O, D_In);
                   end if;
                end loop;
             end;
@@ -998,11 +997,10 @@ package body Flow_Utility is
             declare
                D_Out : constant Flow_Id_Sets.Set :=
                  (if Present (Dependency_Maps.Key (C)) then
-                     To_Flow_Id_Set (Down_Project
-                                       (Node_Sets.To_Set
-                                          (Get_Direct_Mapping_Id
-                                             (Dependency_Maps.Key (C))),
-                                        Scope))
+                     To_Flow_Id_Set
+                        (Down_Project
+                           (Get_Direct_Mapping_Id (Dependency_Maps.Key (C)),
+                            Scope))
                   else
                      Flow_Id_Sets.To_Set (Dependency_Maps.Key (C)));
 
@@ -1012,7 +1010,7 @@ package body Flow_Utility is
 
             begin
                for O of D_Out loop
-                  Depends.Include (O, D_In);
+                  Depends.Insert (O, D_In);
                end loop;
             end;
          end loop;
