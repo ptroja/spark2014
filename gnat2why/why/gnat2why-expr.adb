@@ -35,6 +35,7 @@ with Flow_Refinement;                use Flow_Refinement;
 with Flow_Utility;                   use Flow_Utility;
 with GNAT.Source_Info;
 with Gnat2Why.Annotate;              use Gnat2Why.Annotate;
+with Gnat2Why.Error_Messages;        use Gnat2Why.Error_Messages;
 with Gnat2Why.Expr.Loops;            use Gnat2Why.Expr.Loops;
 with Gnat2Why.Subprograms;           use Gnat2Why.Subprograms;
 with Gnat2Why.Tables;                use Gnat2Why.Tables;
@@ -1481,9 +1482,13 @@ package body Gnat2Why.Expr is
                         (Name   => Why_Eq,
                          Typ    => EW_Bool_Type,
                          Args =>
-                           (1 => +New_Result_Ident (EW_Abstract (Etype (N))),
-                            2 => +Transform_Expr_Or_Identifier
-                              (N, EW_Term, Params)))),
+                           (1 => +New_Result_Ident (Get_Typ (Name)),
+                            2 => +Insert_Simple_Conversion
+                              (Domain         => EW_Term,
+                               Expr           => Transform_Expr_Or_Identifier
+                                 (N, EW_Term, Params),
+                               To             => Get_Typ (Name),
+                               Force_No_Slide => True)))),
                  Context => +Result);
          begin
             Result := Sequence (RE_Prog, Let_Prog);
@@ -1868,7 +1873,8 @@ package body Gnat2Why.Expr is
       else
          pragma Assert (Present (Base));
          declare
-            Why_Base         : constant W_Type_Id := Base_Why_Type (Base);
+            Why_Base         : constant W_Type_Id :=
+              Base_Why_Type_No_Bool (Base);
             Le               : constant W_Identifier_Id :=
               (if Why_Type_Is_Float (Why_Base) then
                     MF_Floats (Why_Base).Le
@@ -2354,7 +2360,8 @@ package body Gnat2Why.Expr is
                           (Ada_Node => Empty,
                            Name     => Full_Name (Formal) & "__compl",
                            Typ      => Actual_Type)
-                        else Transform_Expr (Actual, Domain, Params));
+                        else Transform_Expr
+                          (Actual, Actual_Type, Domain, Params));
                      Need_Ref : constant Boolean :=
                        Get_Type_Kind (Actual_Type) = EW_Abstract
                        or else not Simple_Actual;
@@ -2424,13 +2431,13 @@ package body Gnat2Why.Expr is
 
          procedure Iterate_Call is new
            Iterate_Call_Parameters (Compute_Param);
-      begin
 
+      begin
          --  In the case of protected subprograms, there is an invisible first
          --  parameter, the protected object itself. We call "Compute_Arg" with
          --  empty arguments to process this case.
 
-         if Is_Subp_Or_Entry_Inside_Protected (Subp) then
+         if Within_Protected_Type (Subp) then
             Compute_Param (Empty, Empty);
          end if;
 
@@ -3849,10 +3856,10 @@ package body Gnat2Why.Expr is
                    (1 => Control_Tag,
                     2 =>
                       New_Tag_Access
-                        (Name => Tmp,
+                        (Name     => Tmp,
                          Ada_Node => Actual,
-                         Domain => EW_Term,
-                         Ty   => Get_Ada_Node (+Get_Type (Tmp)))));
+                         Domain   => EW_Term,
+                         Ty       => Get_Ada_Node (+Get_Type (Tmp)))));
          end;
 
          Check :=
@@ -4531,7 +4538,7 @@ package body Gnat2Why.Expr is
 
                      Formal_T : constant W_Type_Id :=
                        Get_Typ (Binders (Bind_Cnt).Content.B_Name);
-                     Actual_T      : constant W_Type_Id :=
+                     Actual_T : constant W_Type_Id :=
                        Type_Of_Node (Actual);
 
                      --  Variables:
@@ -4571,6 +4578,7 @@ package body Gnat2Why.Expr is
 
                      Prefetch_Actual : constant W_Prog_Id :=
                        +Transform_Expr (Actual,
+                                        Actual_T,
                                         EW_Prog,
                                         Params);
 
@@ -4970,7 +4978,7 @@ package body Gnat2Why.Expr is
       --  parameter, the protected object itself. We call "Compute_Arg" with
       --  empty arguments to process this case.
 
-      if Is_Subp_Or_Entry_Inside_Protected (Subp) then
+      if Within_Protected_Type (Subp) then
          Process_Param (Empty, Empty);
       end if;
 
@@ -6016,49 +6024,66 @@ package body Gnat2Why.Expr is
                        To       => Typ));
                Expo : constant W_Expr_Id :=
                  Insert_Simple_Conversion
-                       (Ada_Node => Ada_Node,
-                        Domain   => Domain,
-                        Expr     => Right,
-                        To       => EW_Int_Type);
+                   (Ada_Node => Ada_Node,
+                    Domain   => Domain,
+                    Expr     => Right,
+                    To       => EW_Int_Type);
             begin
-               Name := New_Exp (Typ);
-
-               T := New_Call
-                 (Ada_Node => Ada_Node,
-                  Domain   => Domain,
-                  Name     => Name,
-                  Args     => (1 => Base, 2 => Expo),
-                  Typ      => Typ);
-
-               --  Exponentiation on floats can actually cause a division
-               --  check, when the base is 0 and the exponent is negative.
-
-               if Domain = EW_Prog
-                 and then Is_Floating_Point_Type (Left_Type)
+               if Has_Modular_Integer_Type (Return_Type)
+                 and then Non_Binary_Modulus (Return_Type)
                then
-                  declare
-                     Expo_Negative : constant W_Pred_Id :=
-                       +New_Comparison
-                         (Int_Infix_Lt, Expo,
-                          New_Integer_Constant (Value => Uint_0), EW_Term);
-                     Base_Zero     : constant W_Pred_Id :=
-                       +New_Comparison
-                       (Why_Neq, Base, +MF_Floats (Typ).Plus_Zero, EW_Term);
-                     Ass           : constant W_Prog_Id :=
-                       New_Located_Assert
-                         (Ada_Node => Ada_Node,
-                          Pred     =>
-                            +New_Simpl_Conditional
-                              (Domain    => EW_Pred,
-                               Condition => +Expo_Negative,
-                               Then_Part => +Base_Zero,
-                               Else_Part => +True_Pred
-                              ),
-                          Reason   => VC_Division_Check,
-                          Kind     => EW_Assert);
-                  begin
-                     T := +Sequence (Ass, +T);
-                  end;
+                  T := Transform_Non_Binary_Modular_Operation
+                    (Ada_Node   => Ada_Node,
+                     Ada_Type   => Return_Type,
+                     Domain     => Domain,
+                     Op         => Op,
+                     Left_Opnd  => Base,
+                     Right_Opnd => Expo,
+                     Rep_Type   => Typ,
+                     Modulus    => Modulus (Return_Type));
+
+               else
+                  Name := New_Exp (Typ);
+
+                  T := New_Call
+                    (Ada_Node => Ada_Node,
+                     Domain   => Domain,
+                     Name     => Name,
+                     Args     => (1 => Base, 2 => Expo),
+                     Typ      => Typ);
+
+                  T := Apply_Modulus (Op, Return_Type, T, Domain);
+
+                  --  Exponentiation on floats can actually cause a division
+                  --  check, when the base is 0 and the exponent is negative.
+
+                  if Domain = EW_Prog
+                    and then Is_Floating_Point_Type (Left_Type)
+                  then
+                     declare
+                        Expo_Negative : constant W_Pred_Id :=
+                          +New_Comparison
+                          (Int_Infix_Lt, Expo,
+                           New_Integer_Constant (Value => Uint_0), EW_Term);
+                        Base_Zero     : constant W_Pred_Id :=
+                          +New_Comparison
+                          (Why_Neq, Base, +MF_Floats (Typ).Plus_Zero, EW_Term);
+                        Ass           : constant W_Prog_Id :=
+                          New_Located_Assert
+                            (Ada_Node => Ada_Node,
+                             Pred     =>
+                               +New_Simpl_Conditional
+                               (Domain    => EW_Pred,
+                                Condition => +Expo_Negative,
+                                Then_Part => +Base_Zero,
+                                Else_Part => +True_Pred
+                               ),
+                             Reason   => VC_Division_Check,
+                             Kind     => EW_Assert);
+                     begin
+                        T := +Sequence (Ass, +T);
+                     end;
+                  end if;
                end if;
 
                T := Binding_For_Temp (Ada_Node, Domain, Base, T);
@@ -11518,8 +11543,66 @@ package body Gnat2Why.Expr is
                      return E;
                   end if;
                end Inv;
+
             begin
-               if Nkind (Right) = N_Integer_Literal then
+               --  Translate powers of 2 on modular types as shifts. If the
+               --  modulus is not a power of two, this cannot be done as the
+               --  power computation must not wrap-around on the rep bitvector
+               --  type.
+
+               if Has_Modular_Integer_Type (Left_Type)
+                 and then not Non_Binary_Modulus (Left_Type)
+                 and then Compile_Time_Known_Value (Left)
+                 and then Expr_Value (Left) = Uint_2
+               then
+                  declare
+                     Typ  : constant W_Type_Id := Base_Why_Type (Left_Type);
+                     Expo : constant W_Expr_Id := New_Temp_For_Expr (W_Right);
+                  begin
+                     T := New_Call
+                       (Ada_Node => Expr,
+                        Domain   => Domain,
+                        Name     => MF_BVs (Typ).Lsl,
+                        Args     =>
+                          (1 => New_Modular_Constant (Value => Uint_1,
+                                                      Typ   => Typ),
+                           2 => Insert_Simple_Conversion
+                             (Domain => Domain,
+                              Expr   => Expo,
+                              To     => Typ)),
+                        Typ      => Typ);
+
+                     --  If the exponent does not fit in the modular type,
+                     --  return 0.
+
+                     T := New_Conditional
+                       (Domain      => Domain,
+                        Condition   =>
+                          New_Comparison
+                            (Symbol => Int_Infix_Lt,
+                             Left   => Insert_Simple_Conversion
+                               (Domain   => EW_Term,
+                                Expr     => Expo,
+                                To       => EW_Int_Type),
+                             Right  => +MF_BVs (Typ).Two_Power_Size,
+                             Domain => EW_Pred),
+                        Then_Part   => T,
+                        Else_Part   => New_Modular_Constant (Value => Uint_0,
+                                                             Typ   => Typ),
+                        Typ         => Typ);
+
+                     --  Apply the modulus if it is smaller than the modulus
+                     --  of the rep bitvector type.
+
+                     T := Apply_Modulus (Nkind (Expr), Left_Type, T, Domain);
+                     T := Binding_For_Temp
+                       (Domain => Domain, Tmp => Expo, Context => T);
+                  end;
+
+               --  Static exponentiation up to 3 are expended into equivalent
+               --  multiplications.
+
+               elsif Nkind (Right) = N_Integer_Literal then
                   declare
                      Exp : constant Uint := Intval (Right);
                   begin
@@ -12092,10 +12175,34 @@ package body Gnat2Why.Expr is
    function Transform_Expr
      (Expr   : Node_Id;
       Domain : EW_Domain;
-      Params : Transformation_Params) return W_Expr_Id is
+      Params : Transformation_Params) return W_Expr_Id
+   is
+      Expected_Type : W_Type_Id;
    begin
-      return Transform_Expr
-        (Expr, Type_Of_Node (Expr), Domain, Params);
+
+      --  For record fields, use the type of the field access (that is, the
+      --  type of the field in the Retyps of the record type) to avoid
+      --  conversions.
+      --  Note that this type may depend on discriminants, so it is in general
+      --  a bad idea to try to convert to such a type. Converting from it
+      --  should be OK though as it is never in split form.
+
+      if Nkind (Expr) = N_Selected_Component then
+         declare
+            Field   : constant Entity_Id := Entity (Selector_Name (Expr));
+            Ty      : constant Entity_Id := Retysp (Etype (Prefix (Expr)));
+         begin
+            Expected_Type :=
+              (if Is_Part_Of_Protected_Object (Field) then
+                  EW_Abstract (Etype (Field))
+               else
+                  EW_Abstract (Etype (Search_Component_In_Type (Ty, Field))));
+         end;
+      else
+         Expected_Type := Type_Of_Node (Expr);
+      end if;
+
+      return Transform_Expr (Expr, Expected_Type, Domain, Params);
    end Transform_Expr;
 
    ---------------------------------
@@ -12805,9 +12912,9 @@ package body Gnat2Why.Expr is
       return Result;
    end Transform_Membership_Expression;
 
-   ----------------------------------------------
-   -- Transform_Non_Standard_Modulus_Operation --
-   ----------------------------------------------
+   --------------------------------------------
+   -- Transform_Non_Binary_Modular_Operation --
+   --------------------------------------------
 
    function Transform_Non_Binary_Modular_Operation
      (Ada_Node   : Node_Id;
@@ -13006,6 +13113,39 @@ package body Gnat2Why.Expr is
                            Args   => (1 => Mul_Expr,
                                       2 => Modulus_Expr),
                            Typ    => Next_Bv);
+            begin
+               T := Insert_Simple_Conversion (Ada_Node => Ada_Node,
+                                              Domain   => Domain,
+                                              Expr     => Modulo_Expr,
+                                              To       => Rep_Type);
+            end;
+
+         --  Translate exponentiation on mathematical integers to avoid
+         --  the wrap-around semantics on bitvector types. Indeed, it is not
+         --  possible to go to a bigger bitvector type here as there are no
+         --  such bitvector type even for 8 bit bitvectors.
+
+         when N_Op_Expon =>
+            declare
+               Modulus_Expr : constant W_Expr_Id :=
+                 New_Integer_Constant (Value => Modulus);
+               Int_Left     : constant W_Expr_Id :=
+                 Insert_Simple_Conversion (Domain => Domain,
+                                           Expr   => Left_Opnd,
+                                           To     => EW_Int_Type);
+               Exp_Expr     : constant W_Expr_Id :=
+                 New_Call (Ada_Node => Ada_Node,
+                           Domain   => Domain,
+                           Name     => M_Int_Power.Power,
+                           Args     => (1 => Int_Left,
+                                        2 => Right_Opnd),
+                           Typ      => EW_Int_Type);
+               Modulo_Expr  : constant W_Expr_Id :=
+                 New_Call (Name   => M_Int_Div.Rem_Id,
+                           Domain => Domain,
+                           Args   => (1 => Exp_Expr,
+                                      2 => Modulus_Expr),
+                           Typ    => EW_Int_Type);
             begin
                T := Insert_Simple_Conversion (Ada_Node => Ada_Node,
                                               Domain   => Domain,
@@ -13479,16 +13619,37 @@ package body Gnat2Why.Expr is
 
       --  Get rid of simple cases True and False
 
-      if Is_False_Boolean (+Pred) then
-         return
-           +New_VC_Expr
-           (Ada_Node => Prag,
-            Expr     => +New_Identifier (Name => "absurd"),
-            Reason   => Reason,
-            Domain   => EW_Prog);
-      elsif Is_True_Boolean (+Pred) then
-         return +Void;
-      end if;
+      declare
+         Is_CT_Known : constant Boolean := Compile_Time_Known_Value (Expr);
+      begin
+         if Is_CT_Known
+           or else Is_False_Boolean (+Pred)
+           or else Is_True_Boolean (+Pred)
+         then
+            declare
+               Proved : constant Boolean :=
+                 (if Is_CT_Known then Expr_Value (Expr) = Uint_1
+                  else Is_True_Boolean (+Pred));
+            begin
+               if Proved then
+                  Emit_Proof_Result (Expr,
+                                     Register_VC (Expr, Current_Subp),
+                                     Kind => Reason,
+                                     E => Current_Subp,
+                                     Proved => Proved,
+                                     How_Proved => PC_Prover);
+                  return +Void;
+               else
+                  return
+                    +New_VC_Expr
+                    (Ada_Node => Prag,
+                     Expr     => +New_Identifier (Name => "absurd"),
+                     Reason   => Reason,
+                     Domain   => EW_Prog);
+               end if;
+            end;
+         end if;
+      end;
 
       --  Now handle remaining cases of "regular" pragma Check/Assert
       --  and pragma Assume. This is also how pragmas Preconditions and

@@ -213,7 +213,9 @@ package body SPARK_Util.Subprograms is
          Result : Node_Lists.List;
       begin
          for Prag of Pragmas loop
-            if Entity (Corresponding_Aspect (Prag)) = From then
+            if From_Aspect_Specification (Prag)
+              and then Entity (Corresponding_Aspect (Prag)) = From
+            then
                Result.Append (Prag);
             end if;
          end loop;
@@ -1159,13 +1161,13 @@ package body SPARK_Util.Subprograms is
 
                  --  Global variables accessed by the subprogram
 
-                 and then ((Ekind (E) in Object_Kind
+                 and then ((Is_Object (E)
                             and then Entity_In_SPARK (E)
                             and then Invariant_Check_Needed (Etype (E)))
 
                            --  Self reference of protected subprograms
 
-                           or else (Ekind (E) in Type_Kind
+                           or else (Is_Type (E)
                                     and then Invariant_Check_Needed (E)))
                then
                   return True;

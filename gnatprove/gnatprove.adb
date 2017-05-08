@@ -473,6 +473,11 @@ procedure Gnatprove with SPARK_Mode is
          Args.Append ("off");
       end if;
 
+      if Z3_Counterexample then
+         Args.Append ("--ce_prover");
+         Args.Append ("z3_ce");
+      end if;
+
       Args.Append ("--ce-timeout");
       Args.Append (Image (CE_Timeout, 1));
 
@@ -883,6 +888,10 @@ procedure Gnatprove with SPARK_Mode is
 
       if All_Projects then
          Args.Append ("-U");
+      end if;
+
+      if RTS_Dir.all /= "" then
+         Args.Append ("--RTS=" & RTS_Dir.all);
       end if;
 
       --  ??? we only limit codepeer analysis if the user has given a single
