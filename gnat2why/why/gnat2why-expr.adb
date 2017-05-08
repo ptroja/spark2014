@@ -2430,7 +2430,7 @@ package body Gnat2Why.Expr is
          --  parameter, the protected object itself. We call "Compute_Arg" with
          --  empty arguments to process this case.
 
-         if Is_Protected_Subprogram (Subp) then
+         if Is_Subp_Or_Entry_Inside_Protected (Subp) then
             Compute_Param (Empty, Empty);
          end if;
 
@@ -4970,7 +4970,7 @@ package body Gnat2Why.Expr is
       --  parameter, the protected object itself. We call "Compute_Arg" with
       --  empty arguments to process this case.
 
-      if Is_Protected_Subprogram (Subp) then
+      if Is_Subp_Or_Entry_Inside_Protected (Subp) then
          Process_Param (Empty, Empty);
       end if;
 
@@ -8952,6 +8952,7 @@ package body Gnat2Why.Expr is
                                     Domain      => Domain,
                                     Ada_Node    => Expr);
                end;
+
             else
                declare
                   Op     : constant W_Identifier_Id :=
@@ -8961,6 +8962,7 @@ package body Gnat2Why.Expr is
                   Offset : W_Expr_Id;
                   A_Type : constant Entity_Id := Etype (Var);
                   W_Type : W_Type_Id;
+
                begin
                   if Is_Discrete_Type (Etype (Var)) then
                      if Is_Standard_Boolean_Type (A_Type) then
@@ -9457,13 +9459,16 @@ package body Gnat2Why.Expr is
                                  Domain,
                                  Params);
                Func : constant W_Identifier_Id :=
-                 (if Is_Discrete_Type (Ada_Ty) then
+                 (if Is_Discrete_Type (Ada_Ty)
+                    or else Is_Fixed_Point_Type (Ada_Ty)
+                  then
                       (if Is_Modular_Integer_Type (Ada_Ty) then
                          (if Attr_Id = Attribute_Min
                           then MF_BVs (Base).BV_Min
                           else MF_BVs (Base).BV_Max)
                        else
-                         (if Attr_Id = Attribute_Min then M_Int_Minmax.Min
+                         (if Attr_Id = Attribute_Min
+                          then M_Int_Minmax.Min
                           else M_Int_Minmax.Max))
                   else (if Attr_Id = Attribute_Min
                         then MF_Floats (Base).Min
@@ -12149,9 +12154,6 @@ package body Gnat2Why.Expr is
       T          : W_Expr_Id;
       Subp       : constant Entity_Id := Get_Called_Entity (Expr);
 
-      Args       : constant W_Expr_Array :=
-        Compute_Call_Args (Expr, Domain, Nb_Of_Refs, Nb_Of_Lets, Params);
-
       Selector   : constant Selection_Kind :=
          --  When the call is dispatching, use the Dispatch variant of
          --  the program function, which has the appropriate contract.
@@ -12172,6 +12174,27 @@ package body Gnat2Why.Expr is
          --  the program function).
 
          else Why.Inter.Standard);
+
+      Tag_Expr   : constant W_Expr_Id :=
+        (if Selector = Dispatch then
+            Transform_Expr
+              (Expr   => Controlling_Argument (Expr),
+               Domain => Term_Domain (Domain),
+               Params => Params)
+         else Why_Empty);
+      Tag_Arg    : constant W_Expr_Array :=
+        (if Selector = Dispatch then
+           (1 => New_Tag_Access
+                (Domain => Term_Domain (Domain),
+                 Name   => Tag_Expr,
+                 Ty     => Get_Ada_Node (+Get_Type (Tag_Expr))))
+         else (1 .. 0 => <>));
+      --  Calls to dispatching function need the dispatching tag as an
+      --  additional argument.
+
+      Args       : constant W_Expr_Array :=
+        Tag_Arg &
+        Compute_Call_Args (Expr, Domain, Nb_Of_Refs, Nb_Of_Lets, Params);
 
       Why_Name   : constant W_Identifier_Id :=
         W_Identifier_Id
