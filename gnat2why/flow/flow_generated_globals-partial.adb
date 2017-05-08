@@ -1117,6 +1117,11 @@ package body Flow_Generated_Globals.Partial is
             end if;
          end;
       end if;
+
+      if XXX then
+         Debug_Traversal (Analyzed);
+         Dump (Contracts, Analyzed);
+      end if;
    end Do_Global;
 
    ----------
@@ -1273,7 +1278,7 @@ package body Flow_Generated_Globals.Partial is
 
    begin
       if Debug_Partial_Contracts then
-         Dump (Root_Entity);
+         Dump (Analyzed);
          Ada.Text_IO.New_Line;
       end if;
    end Dump;
@@ -1828,7 +1833,10 @@ package body Flow_Generated_Globals.Partial is
 
       --  Only debug output from now on
 
-      Dump (Contracts, Root_Entity);
+      if XXX then
+         Ada.Text_IO.Put_Line ("Pre-analyzed contracts:");
+         Dump (Contracts, Root_Entity);
+      end if;
    end Do_Preanalysis;
 
    --------------
