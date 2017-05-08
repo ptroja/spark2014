@@ -21,6 +21,11 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+--  ### This generates globals (in phase 1). Package Phase_1 deals
+--  with reading and writing to ALI files, but this is where the magic
+--  happens.
+--  ### Possibly rename after merge
+
 package Flow_Generated_Globals.Partial is
 
    procedure Generate_Contracts (GNAT_Root : Node_Id);

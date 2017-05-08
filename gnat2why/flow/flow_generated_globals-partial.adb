@@ -155,18 +155,42 @@ package body Flow_Generated_Globals.Partial is
       --  Only meaningful for packages
 
       Calls : Call_Nodes;
+      --  ### This is all the calls relevant for generation of
+      --  globals, i.e. calls to subprograms *with* contracts do not
+      --  appear here because we already understand the effects.
    end record;
    --  Information needed to synthesize the the Global contract
+
+   --  ### Idea: Lets try to use tri-valued logic instead of using
+   --  boolean constant Meaningless
 
    type Contract is record
       Globals : Flow_Nodes;
 
       Direct_Calls      : Node_Sets.Set;  --   ??? Callee_Set
       --  For compatibility with old GG (e.g. assumptions)
+      --
+      --  ### All the direct calls; this is what we need for the
+      --  non-global contract synthesis (for example
+      --  nonblocking). This is always a superset Calls in Globals
+      --  (except for a front-end bug w.r.t. calls in contracts)
+      --
+      --  ### What is the TN for this?
 
       Local_Variables       : Global_Set;
       Local_Ghost_Variables : Global_Set;
       --  Only meaningful for packages
+      --
+      --  ### Used for synthesis of Initializes. Right now we do not
+      --  use it for the stripping of locals but in the future we
+      --  could.
+      --
+      --  Right now we only populate it for packages.
+
+      --  ### Intention for these is to only capture the obvious (for
+      --  example, has loop at end, aspect no_return, etc.). This is
+      --  what feeds into the closure/fold in phase 2 to actually work
+      --  out what is going on.
 
       Has_Terminate : Boolean;
       --  Only meaningful for subprograms and entries
@@ -181,6 +205,8 @@ package body Flow_Generated_Globals.Partial is
       --
       --  Only recorded to the ALI files for entries, functions and procedures
    end record;
+   --  ### This record contains all the contracts we generate and is
+   --  _fully_ populated by Do_Global.
 
    package Entity_Contract_Maps is new Ada.Containers.Hashed_Maps
      (Key_Type        => Entity_Id,
@@ -227,6 +253,11 @@ package body Flow_Generated_Globals.Partial is
                Scope_Truly_Within_Or_Same (E, Analyzed);
    --  Categorize calls from E to entities nested within Analyzed into Proof,
    --  Conditional and Definite calls.
+   --
+   --  ### We work out all the (transitive) calls for E, BUT we do not
+   --  go outside the subtree rooted at Analyzed. Calls to such
+   --  subprograms are included as is and do not contribute to the
+   --  closure.
 
    function Contract_Calls (E : Entity_Id) return Node_Sets.Set
    with Pre => Ekind (E) in Entry_Kind
@@ -251,9 +282,42 @@ package body Flow_Generated_Globals.Partial is
      (Analyzed  :        Entity_Id;
       Contracts : in out Entity_Contract_Maps.Map)
    with Pre => Is_Caller_Entity (Analyzed);
+   --  ### Overview
+   --
+   --  Consider a structure like this:
+   --     Pkg
+   --       \ Proc_1
+   --              \ Proc_2
+   --              \ Proc_3
+   --
+   --  We process bottom up (via recursion), so first look at
+   --  Do_Global of Proc_2, then Proc_3, then Proc_1 and finally
+   --  Pkg. On each step we call Fold on ourself (and everything
+   --  underneath), except for leafs since Fold here would be an
+   --  identity function.
+   --
+   --  Note we have a similar approach in Phase_2 via Fold_Subtree and
+   --  Fold; except that we also consider other compilation
+   --  units. Here in Phase_1 we only look at the current compilation
+   --  unit.
+   --
+   --  Analyzed - the containing scope we currently look at.
+   --
+   --  Contracts - this is where we put things; in general we put
+   --  something at Contracts (Analyzed) except in a few cases, and we
+   --  don't modify any other mappings directly (indirectly via
+   --  recursive calls to Do_Global).
 
    procedure Do_Preanalysis
      (Contracts : in out Entity_Contract_Maps.Map);
+   --  ### This is actually the first thing we do (before any call to
+   --  Do_Global). We call Preanalyze_Spec or _Body for all entities
+   --  we will ultimately analyze and place initial mappings into
+   --  Contracts.
+   --
+   --  These will then be fine-tuned (i.e. we take care of
+   --  abstraction) in Do_Global.
+
    --  Collect contracts on the intraprocedural analysis alone
 
    procedure Dump (Contracts : Entity_Contract_Maps.Map; Analyzed : Entity_Id);
@@ -267,6 +331,16 @@ package body Flow_Generated_Globals.Partial is
                    Contracts :        Entity_Contract_Maps.Map;
                    Patches   : in out Global_Patch_Lists.List);
    --  Main workhorse for the partial generated globals
+   --
+   --  ### As we call Fold from Do_Global, initially Folded and
+   --  Analyzed are the same. As we recurse down, Folded keeps track
+   --  of where we are, but Analyzed never changes. We look at
+   --  Contracts and produce patches (after Fold returns there will be
+   --  a patch for Folded -> Contracts in the Patches list) [except in
+   --  a few cases where we don't do anything].
+   --
+   --  As Do_Global goes up the tree, we call Fold which makes things
+   --  more abstract.
 
    function Frontend_Calls (E : Entity_Id) return Node_Sets.Set;
    --  Return direct calls using the frontend cross-references
@@ -976,7 +1050,6 @@ package body Flow_Generated_Globals.Partial is
       Contracts : in out Entity_Contract_Maps.Map)
    is
       Has_Children : constant Boolean := not Is_Leaf (Analyzed);
-
    begin
       if Has_Children then
          for Child of Scope_Map (Analyzed) loop
@@ -989,25 +1062,28 @@ package body Flow_Generated_Globals.Partial is
       then
          declare
             Patches : Global_Patch_Lists.List;
-
          begin
             Fold (Analyzed     => Analyzed,
                   Folded       => Analyzed,
                   Contracts    => Contracts,
                   Patches      => Patches);
+            --  ### We do call fold here (even if the root is a leaf)
+            --  because we've done the refined globals and we need to
+            --  consider what goes into the spec.
 
             for Patch of Patches loop
                declare
                   Updated : Contract renames Contracts (Patch.Entity);
-
                begin
                   Updated.Globals := Patch.Globals;
                end;
+               --  ### This could re-use maps maybe?
             end loop;
          end;
       end if;
 
       --  ??? this is probably wrong place to filter locals
+      --  ### Nah, I think this is the right place.
       if Ekind (Analyzed) in Entry_Kind
                            | E_Function
                            | E_Procedure
@@ -1261,6 +1337,13 @@ package body Flow_Generated_Globals.Partial is
       with Pre => Is_Caller_Entity (E),
            Post => Node_Sets.Is_Empty (Collect'Result.Initializes) and then
                    Is_Empty (Collect'Result.Proper);
+      --  ### This will go through all calls down the tree (so in our
+      --  picture if we are at proc_1 we will not look at calls to
+      --  pkg, but we do collect calls to proc_2) and collect their
+      --  globals (and take care to make for example the output of a
+      --  conditional call an in out).
+      --
+      --  Note this logic is done in Categorize_Calls.
 
       function Down_Project (G : Global_Nodes) return Global_Nodes;
 
@@ -1277,6 +1360,10 @@ package body Flow_Generated_Globals.Partial is
          Partial   : out Node_Sets.Set)
         with Post =>
           (for all E of Partial => Ekind (E) = E_Abstract_State);
+      --  ### Takes Vars and moves up *exactly* one level. For things
+      --  we've just lost visibility we file their encapsulating state
+      --  in Partial; otherwise the variable is put into Projected as
+      --  is.
 
       --------------------
       -- Callee_Globals --
@@ -1401,6 +1488,7 @@ package body Flow_Generated_Globals.Partial is
          end loop;
 
          --  Post-processing
+         --  ### To maintain the non-overlapping invariant
          Result_Proof_Ins.Difference (Result_Inputs);
 
          declare
@@ -1557,6 +1645,7 @@ package body Flow_Generated_Globals.Partial is
       Filter_Local (Analyzed, Update.Calls.Conditional_Calls);
 
       --  Filter_Local (Analyzed, Update.Remote_Calls);
+      --  ### Remove this above commented out
 
       Patches.Append (Global_Patch'(Entity  => Folded,
                                     Globals => Update));
