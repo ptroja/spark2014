@@ -740,7 +740,7 @@ package body Flow_Generated_Globals.Phase_2 is
 
          begin
             if not Constituents.Is_Subset (Of_Set => Most_Refined) then
-               Reads.Include (Get_Flow_Id (AS, In_View, Scope));
+               Reads.Include (Get_Flow_Id (AS, In_View));
             end if;
          end;
       end loop;
