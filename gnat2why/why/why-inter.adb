@@ -734,7 +734,10 @@ package body Why.Inter is
          --  Two types with different kinds cannot be equal
 
          return False;
-      elsif Get_Type_Kind (Left) in EW_Abstract | EW_Split then
+      elsif Get_Type_Kind (Left) in EW_Abstract | EW_Split
+        and then (Present (Get_Ada_Node (+Left))
+                   or else Present (Get_Ada_Node (+Right)))
+      then
 
          --  For EW_Abstract and EW_Split types, compare the ada node
 
@@ -743,7 +746,8 @@ package body Why.Inter is
          return Get_Ada_Node (+Left) = Get_Ada_Node (+Right);
       else
 
-         --  For EW_Builtin types, compare the names
+         --  For EW_Builtin types or EW_Abstract and EW_Split types with no
+         --  Ada node, compare the names
 
          declare
             N1 : constant W_Name_Id := Get_Name (+Left);
@@ -1102,8 +1106,7 @@ package body Why.Inter is
 
          --  Discrete types split forms are their base why type
 
-         pragma Assert (Has_Discrete_Type (E) or else
-                        Has_Floating_Point_Type (E));
+         pragma Assert (Use_Base_Type_For_Type (E));
          return New_Type
            (Ada_Node   => E,
             Is_Mutable => False,

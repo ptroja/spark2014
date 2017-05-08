@@ -141,7 +141,7 @@ package body Gnat2Why.Types is
                   New_Defining_Axiom
                     (Name    => Name,
                      Def     => +Def,
-                     Binders => Get_Parameters_From_Binders (Items)));
+                     Binders => To_Binder_Array (Items)));
 
             Ada_Ent_To_Why.Pop_Scope (Symbol_Table);
          end Create_Axiom_For_Expr;
@@ -224,7 +224,7 @@ package body Gnat2Why.Types is
                                                        others => <>),
                                      2 => Binder_Type'(B_Name => Slst_Arg,
                                                        others => <>))
-                     & Get_Parameters_From_Binders (Items)));
+                     & To_Binder_Array (Items)));
 
             Ada_Ent_To_Why.Pop_Scope (Symbol_Table);
          end;
@@ -304,7 +304,7 @@ package body Gnat2Why.Types is
                                                        others => <>),
                                      4 => Binder_Type'(B_Name => Top_Arg,
                                                        others => <>))
-                     & Get_Parameters_From_Binders (Items)));
+                     & To_Binder_Array (Items)));
 
             Ada_Ent_To_Why.Pop_Scope (Symbol_Table);
          end;
@@ -359,7 +359,7 @@ package body Gnat2Why.Types is
                   Binders =>
                     Binder_Array'(1 => Binder_Type'(B_Name => Main_Arg,
                                                     others => <>))
-                    & Get_Parameters_From_Binders (Items)));
+                    & To_Binder_Array (Items)));
 
             Ada_Ent_To_Why.Pop_Scope (Symbol_Table);
          end;
@@ -414,7 +414,7 @@ package body Gnat2Why.Types is
                   Binders =>
                     Binder_Array'(1 => Binder_Type'(B_Name => Main_Arg,
                                                     others => <>))
-                    & Get_Parameters_From_Binders (Items)));
+                    & To_Binder_Array (Items)));
 
             Ada_Ent_To_Why.Pop_Scope (Symbol_Table);
          end;
@@ -553,7 +553,7 @@ package body Gnat2Why.Types is
       Decl     : constant Node_Id := Parent (E);
       Name     : constant String := Full_Name (E);
       Params   : Transformation_Params;
-      Why_Body : W_Prog_Id := +Void;
+      Why_Body : W_Prog_Id;
 
    begin
       Open_Theory (File,
@@ -573,7 +573,8 @@ package body Gnat2Why.Types is
         (File        => File,
          Phase       => Generate_VCs_For_Body,
          Gen_Marker  => False,
-         Ref_Allowed => True);
+         Ref_Allowed => True,
+         Old_Allowed => True);
 
       Current_Subp := E;
 
@@ -582,15 +583,14 @@ package body Gnat2Why.Types is
       --  For private and private extension declaration, check the default
       --  expression of newly declared fields.
 
-      Why_Body := Sequence
-        (Why_Body,
+      Why_Body :=
          Compute_Default_Check
            (Ty               => Retysp (E),
             Params           => Params,
             Skip_Last_Cond   => True,
             Include_Subtypes => True,
             New_Components   =>
-              Nkind (Decl) = N_Private_Extension_Declaration));
+              Nkind (Decl) = N_Private_Extension_Declaration);
 
       --  If the type has a DIC and this DIC should be checked at
       --  declaration, check that there can be no runtime error in the DIC
