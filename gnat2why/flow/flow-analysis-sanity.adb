@@ -680,20 +680,16 @@ package body Flow.Analysis.Sanity is
       --  @param FS is the Flow_Set in which we look
       --  @return whether FS contains F or a contituent of F
 
-      function State_Partially_Written
-        (F : Flow_Id)
-        return Boolean;
-      --  Returns True if F represents a state abstraction
-      --  that is partially written.
+      function State_Partially_Written (F : Flow_Id) return Boolean;
+      --  Returns True if F represents a state abstraction that is partially
+      --  written.
 
       function Up_Project_Flow_Set
-        (FS      : Flow_Id_Sets.Set;
-         Variant : Flow_Id_Variant)
-        return Flow_Id_Sets.Set;
-      --  Up projects the elements of FS that can be up
-      --  projected. Elements that cannot be up projected are simply
-      --  copied across. The variant of all elements is also set to
-      --  Variant.
+        (FS : Flow_Id_Sets.Set)
+         return Flow_Id_Sets.Set;
+      --  Up projects the elements of FS that can be up projected. Elements
+      --  that cannot be up projected are simply copied across. The variant
+      --  of all elements is also set to Variant.
       --  @param FS is the Flow_Id_Set that will be up projected
       --  @param Variant is the Flow_Id_Variant that all Flow_Ids will have
       --  @return the up projected version of FS
@@ -720,22 +716,31 @@ package body Flow.Analysis.Sanity is
             declare
                State : constant Entity_Id := Get_Direct_Mapping_Id (F);
             begin
-               for Constit of FS loop
-                  if Constit.Kind in Direct_Mapping | Record_Field then
-                     declare
-                        Encapsulator : constant Entity_Id :=
-                          Encapsulating_State
-                            (Get_Direct_Mapping_Id
-                               (Constit));
+               for Var of FS loop
+                  case Var.Kind is
+                     when Direct_Mapping =>
+                        declare
+                           Encapsulator : constant Entity_Id :=
+                             Encapsulating_State
+                               (Get_Direct_Mapping_Id (Var));
 
-                     begin
-                        if Present (Encapsulator)
-                          and then Encapsulator = State
-                        then
-                           return True;
-                        end if;
-                     end;
-                  end if;
+                        begin
+                           if Present (Encapsulator)
+                             and then Encapsulator = State
+                           then
+                              return True;
+                           end if;
+                        end;
+
+                     when Magic_String =>
+                        --  ??? can we get here?
+                        null;
+
+                     when others =>
+                        raise Program_Error;
+
+                  end case;
+
                end loop;
             end;
          end if;
@@ -747,46 +752,37 @@ package body Flow.Analysis.Sanity is
       -- State_Partially_Written --
       -----------------------------
 
-      function State_Partially_Written
-        (F : Flow_Id)
-        return Boolean
+      function State_Partially_Written (F : Flow_Id) return Boolean
       is
          E : constant Entity_Id := Get_Direct_Mapping_Id (F);
       begin
-         --  Trivially False when we are not dealing with a
-         --  state abstraction.
-         if Ekind (E) /= E_Abstract_State then
+         if Ekind (E) = E_Abstract_State then
+            declare
+               Constit             : Flow_Id;
+               Writes_At_Least_One : Boolean := False;
+               One_Is_Missing      : Boolean := False;
+            begin
+               for RC of Iter (Refinement_Constituents (E)) loop
+                  --  Check that at least one constituent is written
+                  if Nkind (RC) /= N_Null then
+                     Constit := Direct_Mapping_Id (RC, Out_View);
+
+                     if Actual_Writes.Contains (Constit) then
+                        Writes_At_Least_One := True;
+                     else
+                        One_Is_Missing := True;
+                     end if;
+                  end if;
+               end loop;
+
+               return Writes_At_Least_One and One_Is_Missing;
+            end;
+
+         --  Trivially False when we are not dealing with a state abstraction
+
+         else
             return False;
          end if;
-
-         declare
-            Constit             : Flow_Id;
-            Writes_At_Least_One : Boolean := False;
-            One_Is_Missing      : Boolean := False;
-         begin
-            for RC of Iter (Refinement_Constituents (E)) loop
-               --  Check that at least one constituent is written
-               if Nkind (RC) /= N_Null then
-                  Constit := Direct_Mapping_Id (RC, Out_View);
-
-                  if Actual_Writes.Contains (Constit) then
-                     Writes_At_Least_One := True;
-                  end if;
-
-                  if not Actual_Writes.Contains (Constit) then
-                     One_Is_Missing := True;
-                  end if;
-               end if;
-            end loop;
-
-            if Writes_At_Least_One
-              and then One_Is_Missing
-            then
-               return True;
-            end if;
-         end;
-
-         return False;
       end State_Partially_Written;
 
       -------------------------
@@ -794,11 +790,10 @@ package body Flow.Analysis.Sanity is
       -------------------------
 
       function Up_Project_Flow_Set
-        (FS      : Flow_Id_Sets.Set;
-         Variant : Flow_Id_Variant)
+        (FS : Flow_Id_Sets.Set)
          return Flow_Id_Sets.Set
       is
-         Up_Projected_Set : Flow_Id_Sets.Set := Flow_Id_Sets.Empty_Set;
+         Up_Projected : Flow_Id_Sets.Set := Flow_Id_Sets.Empty_Set;
 
       begin
          for F of FS loop
@@ -808,11 +803,11 @@ package body Flow.Analysis.Sanity is
                   then Up_Project_Constituent (F, FA.S_Scope)
                   else F);
             begin
-               Up_Projected_Set.Include (Change_Variant (Elem, Variant));
+               Up_Projected.Include (Elem);
             end;
          end loop;
 
-         return Up_Projected_Set;
+         return Up_Projected;
       end Up_Project_Flow_Set;
 
    --  Start of processing for Check_Generated_Refined_Global
@@ -856,12 +851,9 @@ package body Flow.Analysis.Sanity is
                    Writes     => Actual_Writes);
 
       --  Up project actual globals
-      Projected_Actual_Writes    := Up_Project_Flow_Set (Actual_Writes,
-                                                         Out_View);
-      Projected_Actual_Reads     := Up_Project_Flow_Set (Actual_Reads,
-                                                         In_View);
-      Projected_Actual_Proof_Ins := Up_Project_Flow_Set (Actual_Proof_Ins,
-                                                         In_View);
+      Projected_Actual_Writes    := Up_Project_Flow_Set (Actual_Writes);
+      Projected_Actual_Reads     := Up_Project_Flow_Set (Actual_Reads);
+      Projected_Actual_Proof_Ins := Up_Project_Flow_Set (Actual_Proof_Ins);
 
       --  Remove Reads from Proof_Ins
       Projected_Actual_Proof_Ins.Difference (Projected_Actual_Reads);

@@ -4844,7 +4844,7 @@ package body Flow_Utility is
                             then State
                             else Enclosing_Concurrent_Type (F));
          end;
-         Enclosing_F := Direct_Mapping_Id (Enclosing_E);
+         Enclosing_F := Direct_Mapping_Id (Enclosing_E, Variant => F.Variant);
       end loop;
 
       return Enclosing_F;
