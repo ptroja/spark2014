@@ -26,6 +26,7 @@
 with Atree;               use Atree;
 with Einfo;               use Einfo;
 with Sinfo;               use Sinfo;
+with Types;               use Types;
 with Why.Atree.Accessors; use Why.Atree.Accessors;
 with Why.Atree.Modules;   use Why.Atree.Modules;
 with Why.Atree.Traversal; use Why.Atree.Traversal;
@@ -47,6 +48,10 @@ package body Why.Gen.Terms is
         (State : in out Collect_State;
          Node  : W_Deref_Id);
 
+      ------------------
+      -- Deref_Pre_Op --
+      ------------------
+
       procedure Deref_Pre_Op
         (State : in out Collect_State;
          Node  : W_Deref_Id) is
@@ -56,7 +61,10 @@ package body Why.Gen.Terms is
       end Deref_Pre_Op;
 
       SS : Collect_State :=
-             (Control => Continue, Found => False);
+        (Control => Continue, Found => False);
+
+   --  Start of processing for Has_Dereference
+
    begin
       Traverse (SS, W);
       return SS.Found;
@@ -120,22 +128,23 @@ package body Why.Gen.Terms is
 
       procedure Identifier_Pre_Op
         (State : in out Search_State;
-         Node  : W_Identifier_Id) is
+         Node  : W_Identifier_Id)
+      is
+         N : constant Node_Id := Get_Ada_Node (+Node);
       begin
-         if Nkind (Get_Ada_Node (+Node)) in N_Entity
-           and then
-             Ekind (Get_Ada_Node (+Node)) in
-               E_Protected_Type | E_Protected_Subtype
+         if Nkind (N) in N_Entity
+           and then Ekind (N) in E_Protected_Type | E_Protected_Subtype
          then
             State.Found   := True;
             State.Control := Terminate_Immediately;
+         else
+            State.Control := Abandon_Children;
          end if;
-         State.Control := Abandon_Children;
       end Identifier_Pre_Op;
 
       SS : Search_State := (Control => Continue, Found => False);
 
-      --  Start of Processing for Has_Dereference_Or_Any
+   --  Start of Processing for Has_Dereference_Or_Any
 
    begin
       Traverse (SS, +T);

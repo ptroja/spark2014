@@ -161,7 +161,7 @@ package body Why.Gen.Arrays is
            New_Call
              (Domain => Domain,
               Name   => E_Symb (Ty, WNE_To_Array),
-              Args => (1 => Expr));
+              Args   => (1 => Expr));
       end if;
       Arg_Ind := Arg_Ind + 1;
    end Add_Map_Arg;
@@ -214,12 +214,12 @@ package body Why.Gen.Arrays is
    is
       W_Ty : constant W_Type_Id := Get_Type (Expr);
       Ty   : constant Entity_Id := Get_Ada_Node (+W_Ty);
-      Dim  : constant Positive := Positive (Number_Dimensions (Ty));
+      Dim  : constant Positive  := Positive (Number_Dimensions (Ty));
    begin
       Add_Map_Arg (Domain, Args, Expr, Arg_Ind);
       for I in 1 .. Dim loop
          Add_Attr_Arg (Domain, Args, Expr, Attribute_First, I, Arg_Ind);
-         Add_Attr_Arg (Domain, Args, Expr, Attribute_Last, I, Arg_Ind);
+         Add_Attr_Arg (Domain, Args, Expr, Attribute_Last,  I, Arg_Ind);
       end loop;
    end Add_Array_Arg;
 
@@ -402,9 +402,11 @@ package body Why.Gen.Arrays is
    procedure Declare_Additional_Symbols
      (E       : Entity_Id;
       Section : W_Section_Id;
-      Symbols : M_Array_Type) is
+      Symbols : M_Array_Type)
+   is
+      Component_Typ : constant Entity_Id := Component_Type (E);
    begin
-      if Has_Discrete_Type (Component_Type (E)) then
+      if Has_Discrete_Type (Component_Typ) then
 
          --  For discrete arrays of dimension 1 we need the to_int function on
          --  component_type to define the comparison functions.
@@ -412,8 +414,7 @@ package body Why.Gen.Arrays is
          --  additional parameter to_rep.
 
          declare
-            Base : constant W_Type_Id :=
-              Base_Why_Type_No_Bool (Component_Type (E));
+            Base : constant W_Type_Id := Base_Why_Type_No_Bool (Component_Typ);
 
             Fst_Idx : constant Node_Id :=
               First_Index (if Ekind (E) = E_String_Literal_Subtype
@@ -432,7 +433,7 @@ package body Why.Gen.Arrays is
                     Image     =>
                       Get_Name
                         (Conversion_Name
-                           (From => EW_Abstract (Component_Type (E)),
+                           (From => EW_Abstract (Component_Typ),
                             To   => Base))),
                3 =>
                  New_Clone_Substitution
@@ -455,7 +456,7 @@ package body Why.Gen.Arrays is
                     Image     => To_Local (Symbols.Bool_Eq)));
 
          begin
-            if Has_Modular_Integer_Type (Component_Type (E)) then
+            if Has_Modular_Integer_Type (Component_Typ) then
                Emit (Section,
                      New_Clone_Declaration
                        (Theory_Kind   => EW_Module,
@@ -484,12 +485,12 @@ package body Why.Gen.Arrays is
          end;
       end if;
 
-      if Has_Boolean_Type (Component_Type (E)) then
+      if Has_Boolean_Type (Component_Typ) then
 
          --  For arrays of boolean types of dimension 1 we need to define the
          --  logical operators.
 
-         if Is_Standard_Boolean_Type (Component_Type (E)) then
+         if Is_Standard_Boolean_Type (Component_Typ) then
 
             --  For Boolean, use the module Standard_Array_Logical_Op_Axioms
 
@@ -904,7 +905,7 @@ package body Why.Gen.Arrays is
           Image     => New_Name (Symbol => NID ("get"))))
       & Prepare_Indexes_Substitutions
         (Section, Etype (First_Index (Und_Ent)), "Index",
-         False));
+         Declare_One => False));
 
    -------------------------------------------------
    -- Prepare_Subtype_Array_Logical_Substitutions --
@@ -917,28 +918,28 @@ package body Why.Gen.Arrays is
    is
      (Prepare_Standard_Array_Logical_Substitutions (Section, Und_Ent)
       & (1 =>
-              New_Clone_Substitution
-           (Kind      => EW_Type_Subst,
-            Orig_Name => To_Name (WNE_Array_Component_Type),
-            Image     => To_Name (WNE_Array_Component_Type)),
+           New_Clone_Substitution
+             (Kind      => EW_Type_Subst,
+              Orig_Name => To_Name (WNE_Array_Component_Type),
+              Image     => To_Name (WNE_Array_Component_Type)),
          2 =>
-            New_Clone_Substitution
-           (Kind      => EW_Function,
-            Orig_Name => New_Name (Symbol => NID ("to_int")),
-            Image     =>
-               Get_Name (Conversion_Name
-                         (From =>
-                             +EW_Abstract (Component_Type (Und_Ent)),
-                          To   => +EW_Int_Type))),
+           New_Clone_Substitution
+             (Kind      => EW_Function,
+              Orig_Name => New_Name (Symbol => NID ("to_int")),
+              Image     =>
+                Get_Name (Conversion_Name
+                            (From =>
+                               +EW_Abstract (Component_Type (Und_Ent)),
+                             To   => +EW_Int_Type))),
          3 =>
-            New_Clone_Substitution
-           (Kind      => EW_Function,
-            Orig_Name => New_Name (Symbol => NID ("of_int")),
-            Image     =>
-               Get_Name (Conversion_Name
-                         (From => +EW_Int_Type,
-                          To   =>
-                             +EW_Abstract (Component_Type (Und_Ent)))))));
+           New_Clone_Substitution
+             (Kind      => EW_Function,
+              Orig_Name => New_Name (Symbol => NID ("of_int")),
+              Image     =>
+                Get_Name (Conversion_Name
+                            (From => +EW_Int_Type,
+                             To   =>
+                               +EW_Abstract (Component_Type (Und_Ent)))))));
 
    ----------------
    -- Append_Num --
