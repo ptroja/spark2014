@@ -471,6 +471,7 @@ package body SPARK_Frame_Conditions is
       --  those, instead return empty sets.
 
       if Is_Subprogram_Or_Entry (E)
+        and then Ekind (E) /= E_Entry_Family
         and then Is_Abstract_Subprogram (E_Alias)
       then
          return Name_Sets.Empty_Set;
@@ -515,6 +516,7 @@ package body SPARK_Frame_Conditions is
       --  those, which do not have effects, instead return the empty set.
 
       if Is_Subprogram_Or_Entry (E)
+        and then Ekind (E) /= E_Entry_Family
         and then Is_Abstract_Subprogram (E_Alias)
       then
          return Name_Sets.Empty_Set;
@@ -1078,6 +1080,7 @@ package body SPARK_Frame_Conditions is
       --  those, instead return empty sets.
 
       if Is_Subprogram_Or_Entry (E)
+        and then Ekind (E) /= E_Entry_Family
         and then Is_Abstract_Subprogram (E_Alias)
       then
          --  Initialize to empty sets and return
