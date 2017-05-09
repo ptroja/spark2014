@@ -1375,15 +1375,10 @@ package body Flow_Generated_Globals.Partial is
       --------------------
 
       function Callee_Globals (E : Entity_Id) return Global_Nodes is
-         Callee_Contr_Position : constant Entity_Contract_Maps.Cursor :=
-           Contracts.Find (E);
-         --  ??? check if E is within Analyzed
-
       begin
-         if Entity_Contract_Maps.Has_Element (Callee_Contr_Position) then
+         if Scope_Truly_Within_Or_Same (E, Analyzed) then
             declare
-               Callee_Globals : Flow_Nodes renames
-                 Contracts (Callee_Contr_Position).Globals;
+               Callee_Globals : Flow_Nodes renames Contracts (E).Globals;
             begin
                if E = Analyzed
                  or else Parent_Scope (E) = Analyzed
