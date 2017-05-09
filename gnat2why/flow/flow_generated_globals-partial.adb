@@ -1208,13 +1208,13 @@ package body Flow_Generated_Globals.Partial is
                end if;
 
                case Ekind (E) is
-                  when E_Function | E_Procedure =>
+                  --  when E_Function | E_Procedure =>
                      --  Ada.Text_IO.Put_Line
                      --    (Indent & Indent & "Nonblocking  : " &
                      --     Boolean'Image (Contr.Nonblocking));
-                     Ada.Text_IO.Put_Line
-                       (Indent & Indent & "Nonreturning : " &
-                        Boolean'Image (Contr.Nonreturning));
+                     --  Ada.Text_IO.Put_Line
+                     --    (Indent & Indent & "Nonreturning : " &
+                     --     Boolean'Image (Contr.Nonreturning));
 
                   when E_Package =>
                      Dump (Indent & "Initializes  ",
