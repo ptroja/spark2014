@@ -1335,8 +1335,13 @@ package body Flow_Generated_Globals.Partial is
         Full_Contract.Local_Variables or Full_Contract.Local_Ghost_Variables;
       --  Only needed for packages, but safe for other entities
 
-      function Callee_Globals (E : Entity_Id) return Global_Nodes
-      with Pre => Is_Caller_Entity (E);
+      function Callee_Globals
+        (Callee : Entity_Id;
+         Caller : Entity_Id)
+         return Global_Nodes
+      with Pre => Is_Caller_Entity (Callee);
+      --  Returns entities that contribute to the refined globals of Caller due
+      --  to a call to Callee.
 
       function Collect (E : Entity_Id) return Flow_Nodes
       with Pre => Is_Caller_Entity (E),
@@ -1350,7 +1355,8 @@ package body Flow_Generated_Globals.Partial is
       --
       --  Note this logic is done in Categorize_Calls.
 
-      function Down_Project (G : Global_Nodes) return Global_Nodes;
+      function Down_Project (G : Global_Nodes; E : Entity_Id)
+                             return Global_Nodes;
 
       function Is_Fully_Written
         (State   : Entity_Id;
@@ -1374,46 +1380,50 @@ package body Flow_Generated_Globals.Partial is
       -- Callee_Globals --
       --------------------
 
-      function Callee_Globals (E : Entity_Id) return Global_Nodes is
+      function Callee_Globals
+        (Callee : Entity_Id;
+         Caller : Entity_Id)
+         return Global_Nodes
+      is
       begin
-         if Scope_Truly_Within_Or_Same (E, Analyzed) then
+         if Scope_Truly_Within_Or_Same (Callee, Analyzed) then
             declare
-               Callee_Globals : Flow_Nodes renames Contracts (E).Globals;
+               Callee_Globals : Flow_Nodes renames Contracts (Callee).Globals;
             begin
-               if E = Analyzed
-                 or else Parent_Scope (E) = Analyzed
+               if Callee = Analyzed
+                 or else Parent_Scope (Callee) = Analyzed
                then
-                  if (case Ekind (E) is
+                  if (case Ekind (Callee) is
                          when E_Package =>
-                            Present (Get_Pragma (E, Pragma_Initializes)),
+                            Present (Get_Pragma (Callee, Pragma_Initializes)),
 
                          when Entry_Kind
                             | E_Function
                             | E_Procedure
                             | E_Task_Type
                          =>
-                         Entity_In_SPARK (E)
-                           and then not Entity_Body_In_SPARK (E)
-                           and then Has_User_Supplied_Globals (E),
+                         Entity_In_SPARK (Callee)
+                           and then not Entity_Body_In_SPARK (Callee)
+                           and then Has_User_Supplied_Globals (Callee),
 
                          when E_Protected_Type =>
                             Meaningless,
 
                          when others => raise Program_Error)
                   then
-                     Debug ("Folding with down-projected globals:", E);
-                     return Down_Project (Callee_Globals.Proper);
+                     Debug ("Folding with down-projected globals:", Callee);
+                     return Down_Project (Callee_Globals.Proper, Caller);
                   else
-                     Debug ("Folding with refined globals:", E);
+                     Debug ("Folding with refined globals:", Callee);
                      return Callee_Globals.Refined;
                   end if;
                else
-                  Debug ("Folding with proper globals:", E);
-                  return Down_Project (Callee_Globals.Proper);
+                  Debug ("Folding with proper globals:", Callee);
+                  return Down_Project (Callee_Globals.Proper, Caller);
                end if;
             end;
          else
-            Debug ("Ignoring remote call to", E);
+            Debug ("Ignoring remote call to", Callee);
             return Global_Nodes'(others => <>);
          end if;
       end Callee_Globals;
@@ -1440,7 +1450,8 @@ package body Flow_Generated_Globals.Partial is
 
          for Callee of Result.Calls.Definite_Calls loop
             declare
-               G : constant Global_Nodes := Callee_Globals (Callee);
+               G : constant Global_Nodes :=
+                 Callee_Globals (Callee, Caller => E);
             begin
                Result_Proof_Ins.Union (G.Proof_Ins);
                Result_Inputs.Union (G.Inputs);
@@ -1450,7 +1461,8 @@ package body Flow_Generated_Globals.Partial is
 
          for Callee of Result.Calls.Proof_Calls loop
             declare
-               G : constant Global_Nodes := Callee_Globals (Callee);
+               G : constant Global_Nodes :=
+                 Callee_Globals (Callee, Caller => E);
             begin
                Result_Proof_Ins.Union (G.Proof_Ins);
                Result_Proof_Ins.Union (G.Inputs);
@@ -1478,7 +1490,8 @@ package body Flow_Generated_Globals.Partial is
 
          for Callee of Result.Calls.Conditional_Calls loop
             declare
-               G : constant Global_Nodes := Callee_Globals (Callee);
+               G : constant Global_Nodes :=
+                 Callee_Globals (Callee, Caller => E);
             begin
                Result_Proof_Ins.Union (G.Proof_Ins);
                Result_Inputs.Union (G.Inputs);
@@ -1510,21 +1523,22 @@ package body Flow_Generated_Globals.Partial is
       -- Down_Project --
       ------------------
 
-      function Down_Project (G : Global_Nodes) return Global_Nodes is
-
+      function Down_Project (G : Global_Nodes; E : Entity_Id)
+                             return Global_Nodes
+      is
          Analyzed_View : constant Flow_Scope :=
-           (case Ekind (Analyzed) is
+           (case Ekind (E) is
                when Entry_Kind
                   | E_Function
                   | E_Procedure
                   | E_Protected_Type
                   | E_Task_Type
                =>
-                  Get_Flow_Scope (Get_Body (Analyzed)),
+                  Get_Flow_Scope (Get_Body (E)),
 
                when E_Package
                =>
-                 (Analyzed, Body_Part),
+                 (E, Body_Part),
 
                when others
                =>
