@@ -73,6 +73,9 @@ package body Flow is
 
    Debug_Trace_Scoping : constant Boolean := True;
 
+   procedure Debug_Print_Generated_Contracts (FA : Flow_Analysis_Graphs);
+   --  Pretty print all contracts (for switch --flow-show-gg).
+
    ------------------------------------------------------------
 
    use Flow_Graphs;
@@ -95,6 +98,119 @@ package body Flow is
 
    procedure Build_Graphs_For_Analysis (FA_Graphs : out Analysis_Maps.Map);
    --  Build flow graphs for the current compilation unit; phase 2
+
+   -------------------------------------
+   -- Debug_Print_Generated_Contracts --
+   -------------------------------------
+
+   procedure Debug_Print_Generated_Contracts (FA : Flow_Analysis_Graphs)
+   is
+      procedure Print_Named_Flow_Id_Set (Name        : String;
+                                         S           : Flow_Id_Sets.Set;
+                                         Print_Empty : Boolean);
+      --  Debug procedure to pretty print the contents of S, indended under
+      --  Name.
+
+      -----------------------------
+      -- Print_Named_Flow_Id_Set --
+      -----------------------------
+
+      procedure Print_Named_Flow_Id_Set (Name        : String;
+                                         S           : Flow_Id_Sets.Set;
+                                         Print_Empty : Boolean)
+      is
+      begin
+         if not S.Is_Empty or else Print_Empty then
+            Write_Str (Name);
+            if not S.Is_Empty then
+               Write_Str (" =>");
+            end if;
+            Write_Eol;
+            Indent;
+            for E of S loop
+               Sprint_Flow_Id (E);
+               Write_Eol;
+            end loop;
+            Outdent;
+         end if;
+      end Print_Named_Flow_Id_Set;
+   begin
+      Write_Str ("Generated contracts for ");
+      Sprint_Node (FA.Analyzed_Entity);
+      Write_Eol;
+      Indent;
+
+      if FA.Kind in Kind_Package | Kind_Package_Body then
+         declare
+            M : constant Dependency_Maps.Map :=
+              GG_Get_Initializes (FA.Spec_Entity,
+                                  FA.S_Scope);
+         begin
+            if not M.Is_Empty then
+               Write_Str ("Initializes =>");
+               Write_Eol;
+               Indent;
+               for C in M.Iterate loop
+                  Print_Named_Flow_Id_Set
+                    (Flow_Id_To_String (Dependency_Maps.Key (C)),
+                     Dependency_Maps.Element (C),
+                     True);
+               end loop;
+               Outdent;
+            end if;
+         end;
+      else
+         declare
+            use type Flow_Id_Sets.Set;
+
+            P, R, W : Flow_Id_Sets.Set;
+
+            procedure Print_Sets;
+            procedure Print_Sets is
+               RO : constant Flow_Id_Sets.Set :=
+                 Change_Variant (R, Normal_Use) -
+                 Change_Variant (W, Normal_Use);
+               RW : constant Flow_Id_Sets.Set :=
+                 Change_Variant (R, Normal_Use) and
+                 Change_Variant (W, Normal_Use);
+               WO : constant Flow_Id_Sets.Set :=
+                 Change_Variant (W, Normal_Use) -
+                 Change_Variant (R, Normal_Use);
+            begin
+               Print_Named_Flow_Id_Set ("Proof_In",
+                                        Change_Variant (P, Normal_Use),
+                                        False);
+               Print_Named_Flow_Id_Set ("Input", RO, False);
+               Print_Named_Flow_Id_Set ("In_Out", RW, False);
+               Print_Named_Flow_Id_Set ("Output", WO, False);
+            end Print_Sets;
+         begin
+            GG_Get_Globals (E           => FA.Analyzed_Entity,
+                            S           => FA.S_Scope,
+                            Proof_Reads => P,
+                            Reads       => R,
+                            Writes      => W);
+            Write_Str ("Global =>");
+            Write_Eol;
+            Indent;
+            Print_Sets;
+            Outdent;
+
+            GG_Get_Globals (E           => FA.Analyzed_Entity,
+                            S           => FA.B_Scope,
+                            Proof_Reads => P,
+                            Reads       => R,
+                            Writes      => W);
+            Write_Str ("Refined_Global =>");
+            Write_Eol;
+            Indent;
+            Print_Sets;
+            Outdent;
+         end;
+      end if;
+
+      Outdent;
+   end Debug_Print_Generated_Contracts;
 
    -------------------------
    -- Add_To_Temp_String  --
@@ -1102,6 +1218,14 @@ package body Flow is
       FA.GG.Aborted := Generating_Globals and then not FA.Is_Generative;
 
       Debug_GG_Source;
+
+      --  Print generated globals or initializes if --flow-show-gg is set
+      if Gnat2Why_Args.Flow_Show_GG
+        and then not Generating_Globals
+        and then FA.Is_Generative
+      then
+         Debug_Print_Generated_Contracts (FA);
+      end if;
 
       --  Even if aborting we still need to collect tasking-related info,
       --  (using control-flow traversal) and register the results.
