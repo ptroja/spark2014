@@ -458,25 +458,16 @@ package body Flow_Generated_Globals.Phase_2 is
 
    begin
       if Entity_Contract_Maps.Has_Element (C) then
-         declare
-            Refined : constant Boolean :=
-              Subprogram_Refinement_Is_Visible (E, S);
+         Populate_Results
+           (if Subprogram_Refinement_Is_Visible (E, S)
+            then Global_Contracts (C).Refined
+            else Global_Contracts (C).Proper);
 
-         begin
-            Populate_Results
-              (if Refined
-               then Global_Contracts (C).Refined
-               else Global_Contracts (C).Proper);
+         --  Down-project globals to the scope of the caller
 
-            --  Refined globals are given as they are; proper globals need to
-            --  be expanded when the subprogram is called from package body.
-
-            if not Refined then
-               Down_Project (Proof_Reads);
-               Down_Project (Reads);
-               Down_Project (Writes);
-            end if;
-         end;
+         Down_Project (Proof_Reads);
+         Down_Project (Reads);
+         Down_Project (Writes);
       else
          Proof_Reads.Clear;
          Reads.Clear;
