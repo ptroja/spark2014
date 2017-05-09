@@ -3811,6 +3811,7 @@ package body Flow.Control_Flow_Graph is
 
       DM : constant Dependency_Maps.Map :=
         Parse_Initializes (Package_Spec, Initializes_Scope);
+      --  ??? This needs to take into account initializes from gg
 
       V : Flow_Graphs.Vertex_Id;
 
