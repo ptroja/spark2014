@@ -2159,6 +2159,11 @@ package body Flow_Generated_Globals.Phase_2 is
             end loop;
 
             if Ekind (Folded) /= E_Protected_Type then
+               --  Make sure that we have a mapping from Entity_Name to
+               --  Entity_Id. This mapping is typically only registered for
+               --  called entities and we need it even if there are no calls.
+               Register_Entity (Folded);
+
                Fold (Folded    => To_Entity_Name (Folded),
                      Contracts => Contracts,
                      Patches   => Patches);
