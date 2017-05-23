@@ -1899,6 +1899,21 @@ package body Flow_Generated_Globals.Phase_2 is
 
             function Collect (Caller : Entity_Name) return Global_Names;
 
+            function Down_Project
+              (Var    : Entity_Name;
+               Caller : Entity_Name)
+               return Name_Sets.Set;
+
+            function Down_Project
+              (Vars   : Name_Sets.Set;
+               Caller : Entity_Name)
+               return Name_Sets.Set;
+
+            function Down_Project
+              (G      : Global_Names;
+               Caller : Entity_Name)
+               return Global_Names;
+
             function Is_Fully_Written
               (State   : Entity_Name;
                Outputs : Name_Sets.Set)
@@ -1922,60 +1937,9 @@ package body Flow_Generated_Globals.Phase_2 is
                C : constant Entity_Contract_Maps.Cursor :=
                  Contracts.Find (Callee);
 
-            --  Start of processing for Callee_Globals
-
             begin
                if Entity_Contract_Maps.Has_Element (C) then
-                  declare
-                     function Down_Project
-                       (Vars : Name_Sets.Set)
-                        return Name_Sets.Set;
-
-                     function Down_Project
-                       (G : Global_Names)
-                        return Global_Names;
-
-                     ------------------
-                     -- Down_Project --
-                     ------------------
-
-                     function Down_Project
-                       (G : Global_Names)
-                        return Global_Names
-                     is
-                       (Proof_Ins => Down_Project (G.Proof_Ins),
-                        Inputs    => Down_Project (G.Inputs),
-                        Outputs   => Down_Project (G.Outputs));
-
-                     function Down_Project
-                       (Vars : Name_Sets.Set)
-                        return Name_Sets.Set
-                     is
-                        Projected : Name_Sets.Set;
-
-                     begin
-                        for Var of Vars loop
-                           declare
-                              Var_Scope : constant Entity_Name := Scope (Var);
-
-                           begin
-                              if Scope_Within_Or_Same (Caller, Var_Scope)
-                                and then State_Comp_Map.Contains (Var)
-                              then
-                                 --  ??? recursive call to Down_Project
-                                 Projected.Union (State_Comp_Map (Var));
-                              else
-                                 Projected.Include (Var);
-                              end if;
-                           end;
-                        end loop;
-
-                        return Projected;
-                     end Down_Project;
-
-                  begin
-                     return Down_Project (Contracts (C).Proper);
-                  end;
+                  return Down_Project (Contracts (C).Proper, Caller);
                else
                   --  Debug ("Ignoring call to", E);
                   return Global_Names'(others => <>);
@@ -2067,6 +2031,50 @@ package body Flow_Generated_Globals.Phase_2 is
                        Outputs   => Result_Outputs);
             end Collect;
 
+            ------------------
+            -- Down_Project --
+            ------------------
+
+            function Down_Project
+              (G      : Global_Names;
+               Caller : Entity_Name)
+               return Global_Names
+            is
+              (Proof_Ins => Down_Project (G.Proof_Ins, Caller),
+               Inputs    => Down_Project (G.Inputs,    Caller),
+               Outputs   => Down_Project (G.Outputs,   Caller));
+
+            function Down_Project
+              (Vars   : Name_Sets.Set;
+               Caller : Entity_Name)
+               return Name_Sets.Set
+            is
+               Projected : Name_Sets.Set;
+            begin
+               for Var of Vars loop
+                  Projected.Union (Down_Project (Var, Caller));
+               end loop;
+
+               return Projected;
+            end Down_Project;
+
+            function Down_Project
+              (Var    : Entity_Name;
+               Caller : Entity_Name)
+               return Name_Sets.Set
+            is
+               Var_Scope : constant Entity_Name := Scope (Var);
+            begin
+               if Scope_Within_Or_Same (Caller, Var_Scope)
+                 and then State_Comp_Map.Contains (Var)
+               then
+                  --  ??? recursive call to Down_Project
+                  return State_Comp_Map (Var);
+               else
+                  return Name_Sets.To_Set (Var);
+               end if;
+            end Down_Project;
+
             ----------------------
             -- Is_Fully_Written --
             ----------------------
@@ -2074,7 +2082,7 @@ package body Flow_Generated_Globals.Phase_2 is
             function Is_Fully_Written
               (State   : Entity_Name;
                Outputs : Name_Sets.Set)
-                  return Boolean
+               return Boolean
             is
             begin
                return Name_Sets.Is_Subset (Subset => State_Comp_Map (State),
