@@ -2961,6 +2961,10 @@ package body Flow_Utility is
       FS   : Flow_Id_Sets.Set;
 
    begin
+      --  This routine is mirrored in Variable_Inputs_Of_Constants;
+      --  any change here should be reflected there.
+      --  ??? ideally, this should be refactored
+
       if Is_Imported (E) then
          --  If we are dealing with an imported constant, we consider this to
          --  have potentially variable input.

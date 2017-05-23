@@ -21,6 +21,7 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+with Ada.Strings.Unbounded;            use Ada.Strings.Unbounded;
 with Ada.Containers.Hashed_Maps;
 with Ada.Text_IO;                      use Ada.Text_IO;
 with Common_Iterators;                 use Common_Iterators;
@@ -47,11 +48,51 @@ with SPARK_Xrefs;                      use SPARK_Xrefs;
 
 package body Flow_Generated_Globals.Partial is
 
+   use type Node_Sets.Set;
+   use type Node_Lists.List;
+   use type Ada.Containers.Count_Type;
+   --  for the "=" and "or" operators
+
    ----------------------------------------------------------------------------
    --  Debugging
    ----------------------------------------------------------------------------
 
    Indent : constant String := "  ";
+
+   ----------------------------------------------------------------------------
+   --  Utilities for constants with variable input
+   ----------------------------------------------------------------------------
+
+   Variable_Input : constant Entity_Id := Empty;
+   --  Represents dependency on a variable input. It is chosen to not collide
+   --  with other entities represented in graphs from the Constant_Graphs
+   --  package.
+
+   function To_List (E : Entity_Id) return Node_Lists.List
+   with Post => To_List'Result.Length = 1
+                  and then
+                To_List'Result.First_Element = E;
+   --  Returns a singleton list with E
+
+   --  ??? this could go into Common_Containers; in particular, To_List has
+   --  a body here, because it is needed to elaborate a constant.
+
+   -------------
+   -- To_List --
+   -------------
+
+   function To_List (E : Entity_Id) return Node_Lists.List is
+      Singleton : Node_Lists.List;
+   begin
+      Singleton.Append (E);
+      return Singleton;
+   end To_List;
+
+   Variable : constant Node_Lists.List := To_List (Variable_Input);
+   --  A singleton containers a special value that represents a dependency
+   --  on a variable input. (By having a special-value with the same type as
+   --  non-variable dependencies we adoid discriminated records, which would
+   --  be just too verbose.)
 
    ----------------------------------------------------------------------------
    --  Preliminaries
@@ -102,14 +143,18 @@ package body Flow_Generated_Globals.Partial is
    ----------------------
 
    function Is_Global_Entity (E : Entity_Id) return Boolean is
-     (Is_Heap_Entity (E) or else
+     (Is_Heap_Entity (E)
+        or else
       Ekind (E) in E_Abstract_State
-                 | E_Constant
                  | E_Loop_Parameter
                  | E_Variable
                  | Formal_Kind
                  | E_Protected_Type
-                 | E_Task_Type);
+                 | E_Task_Type
+        or else
+      (Ekind (E) = E_Constant and then Has_Variable_Input (E)));
+   --  ??? this could be further restricted basen on what may appear in
+   --  Proof_In, Input, and Output.
 
    ----------------------------------------------------------------------------
    --  Types
@@ -164,6 +209,21 @@ package body Flow_Generated_Globals.Partial is
    --  ### Idea: Lets try to use tri-valued logic instead of using
    --  boolean constant Meaningless
 
+   type Constant_Callees is record
+      Const   : Entity_Id;
+      Callees : Node_Lists.List;
+   end record
+   with Dynamic_Predicate =>
+      Ekind (Const) = E_Constant
+         and then
+      (for all Callee of Callees => not Is_In_Analyzed_Files (Callee));
+   --  Constant and subprograms from other compilation units (directly or
+   --  indirectly) called in its initialization expression.
+
+   package Constant_Calls_Lists is new Ada.Containers.Doubly_Linked_Lists
+     (Element_Type => Constant_Callees);
+   --  Container with constants and calls in their initialization expressions
+
    type Contract is record
       Globals : Flow_Nodes;
 
@@ -181,11 +241,13 @@ package body Flow_Generated_Globals.Partial is
       Local_Ghost_Variables : Global_Set;
       --  Only meaningful for packages
       --
-      --  ### Used for synthesis of Initializes. Right now we do not
-      --  use it for the stripping of locals but in the future we
-      --  could.
+      --  ### Used for synthesis of Initializes. It is messy, because it should
+      --  come from AST traversal, not from slicing, but this again is messy
+      --  because of wrong handling of generic IN parameters.
       --
-      --  Right now we only populate it for packages.
+      --  We populate it for all entities, but write to ALI only for packages;
+      --  for subprograms they are only used to decide which of their (local)
+      --  constants have variable input.
 
       --  ### Intention for these is to only capture the obvious (for
       --  example, has loop at end, aspect no_return, etc.). This is
@@ -224,12 +286,22 @@ package body Flow_Generated_Globals.Partial is
    package Global_Patch_Lists is new Ada.Containers.Doubly_Linked_Lists
      (Element_Type => Global_Patch);
 
-   package Call_Graphs is new Graphs
+   package Constant_Graphs is new Graphs
      (Vertex_Key   => Entity_Id,
       Key_Hash     => Node_Hash,
       Edge_Colours => No_Colours,
       Null_Key     => Entity_Id'Last,
       Test_Key     => "=");
+   --  Graphs for resolving constants without variable input within the current
+   --  compilation unit.
+   --
+   --  Vertices represent:
+   --  * constants with possibly variable inputs,
+   --  * subprograms called (directly or indirectly) from constants'
+   --    initilization expressions,
+   --  * a hardcoded key, which represents a dependency on a variable input.
+   --
+   --  Edges represent dependencies constants' initialization.
 
    Meaningless : constant Boolean := False;
    --  Meaningless value needed to silence checks for invalid data
@@ -351,10 +423,44 @@ package body Flow_Generated_Globals.Partial is
    function Is_Empty (G : Global_Nodes) return Boolean;
    --  Return True iff all components of the G are empty
 
-   procedure To_Node_Set
-     (Names :     Name_Sets.Set;
-      Nodes : out Node_Sets.Set);
+   procedure Print (G : Constant_Graphs.Graph);
+   --  Print graph with dependencies between constants with variable input
+
+   procedure Resolve_Constants
+     (Contracts      :     Entity_Contract_Maps.Map;
+      Constant_Graph : out Constant_Graphs.Graph);
+   --  Create a graph rooted at constants in Globals of subprogram from the
+   --  current compilation unit. This code has very much in common with code
+   --  for potentially blocking, termination, etc. ??? most likely this could
+   --  be somehow refactored.
+
+   function Resolved_Inputs
+     (E              : Entity_Id;
+      Constant_Graph : Constant_Graphs.Graph)
+      return Node_Lists.List
+   with Pre  => Ekind (E) = E_Constant,
+     Post => (Resolved_Inputs'Result = Variable
+               or else
+             (for all E of Resolved_Inputs'Result =>
+                Ekind (E) in E_Function | E_Procedure
+                  and then
+                not Is_In_Analyzed_Files (E)));
+   --  Returns either a singleton list representing a variable input or a
+   --  list with subprograms from other compilation unit called (directly
+   --  or indirectly) in the initialization of E.
+
+   procedure Strip_Constants
+     (From           : in out Flow_Nodes;
+      Constant_Graph :        Constant_Graphs.Graph);
+   --  Filter constants without variable from contract
+
+   function To_Node_Set (Names : Name_Sets.Set) return Node_Sets.Set;
    --  Convert names to nodes
+
+   function To_Names
+     (Constant_Calls : Constant_Calls_Lists.List)
+      return Name_Constant_Callees_List.List;
+   --  Convert constant calls info from nodes to names
 
    function To_Names
      (Entries : Entry_Call_Sets.Set;
@@ -362,11 +468,23 @@ package body Flow_Generated_Globals.Partial is
       return Name_Tasking_Info;
    --  Convert tasking info from nodes to names
 
+   procedure Unresolved_Local_Constants
+     (Locals         :        Node_Lists.List;
+      Constant_Graph :        Constant_Graphs.Graph;
+      Constant_Calls : in out Constant_Calls_Lists.List)
+   with Post => Constant_Calls.Length in
+                  Constant_Calls.Length'Old ..
+                  Constant_Calls.Length'Old + Locals.Length;
+   --  Extend Constant_Calls with calls from initial expressions of Locals to
+   --  subprograms from other compilation units.
+
    procedure Write_Contracts_To_ALI
-     (E :        Entity_Id;
-      C : in out Entity_Contract_Maps.Map)
+     (E              :        Entity_Id;
+      Constant_Graph :        Constant_Graphs.Graph;
+      Contracts      : in out Entity_Contract_Maps.Map)
    with Pre => Is_Caller_Entity (E);
-   --  Moves information to the ALI writer (probably should write it directly)
+   --  Strip constants from contract and write in to the ALI writer (probably
+   --  should write it directly).
 
    ----------------------------------------------------------------------------
    --  Bodies
@@ -661,8 +779,6 @@ package body Flow_Generated_Globals.Partial is
       Contracts : Entity_Contract_Maps.Map)
       return Call_Nodes
    is
-      use type Node_Sets.Set;
-
       Original : Call_Nodes renames Contracts (E).Globals.Calls;
 
       --  Categorization is done in two steps: first, we find subprograms
@@ -1013,6 +1129,21 @@ package body Flow_Generated_Globals.Partial is
          Writes              => Outputs_FS,
          Use_Deduced_Globals => False);
 
+      --  Constants without variable inputs should not appear in Global/Depends
+      --  contracts in the first place, but users might put them there by
+      --  mistake. We will detect this when analyzing the invalid contracts,
+      --  but here we still want to filter them to stop propagation of errors
+      --  and prevent failures on (otherwise reasonable) assertions.
+      --
+      --  ??? probably something weird might happen if a constant without
+      --  variable input appears in Global/Depends of a "boundary" subprogram,
+      --  i.e. either subprogram which has no-body-yet or is declared in .ads
+      --  file excluded from the analysis by GPR's Excluded_Source_Files
+      --  directive.
+
+      Remove_Constants (Proof_Ins_FS);
+      Remove_Constants (Inputs_FS);
+
       return (Proof_Ins => To_Node_Set (Proof_Ins_FS),
               Inputs    => To_Node_Set (Inputs_FS),
               Outputs   => To_Node_Set (Outputs_FS));
@@ -1327,13 +1458,11 @@ package body Flow_Generated_Globals.Partial is
 
       Full_Contract : Contract renames Contracts (Folded);
 
-      use type Node_Sets.Set; --  to make "or" operator visible
-
       Original : Flow_Nodes renames Full_Contract.Globals;
 
-      Local_Pkg_Variables : constant Node_Sets.Set :=
-        Full_Contract.Local_Variables or Full_Contract.Local_Ghost_Variables;
-      --  Only needed for packages, but safe for other entities
+      function Local_Pkg_Variables return Node_Sets.Set
+      with Pre => Ekind (Folded) = E_Package;
+      --  Entities allowed in the Initialized aspect
 
       function Callee_Globals
         (Callee : Entity_Id;
@@ -1567,6 +1696,25 @@ package body Flow_Generated_Globals.Partial is
          (for all C of Iter (Part_Of_Constituents (State)) =>
              Outputs.Contains (C)));
 
+      -------------------------
+      -- Local_Pkg_Variables --
+      -------------------------
+
+      function Local_Pkg_Variables return Node_Sets.Set is
+         Info : Nested renames Scope_Map (Folded);
+         Vars : Node_Sets.Set;
+      begin
+         for E of Info.Variables loop
+            Vars.Insert (E);
+         end loop;
+
+         for E of Info.Ghost_Variables loop
+            Vars.Insert (E);
+         end loop;
+
+         return Vars;
+      end Local_Pkg_Variables;
+
       ----------------
       -- Up_Project --
       ----------------
@@ -1674,13 +1822,8 @@ package body Flow_Generated_Globals.Partial is
    --------------------
 
    function Frontend_Calls (E : Entity_Id) return Node_Sets.Set is
-      Calls : Node_Sets.Set;
-
    begin
-      To_Node_Set (Names => Computed_Calls (To_Entity_Name (E)),
-                   Nodes => Calls);
-
-      return Calls;
+      return To_Node_Set (Computed_Calls (To_Entity_Name (E)));
    end Frontend_Calls;
 
    ----------------------
@@ -1691,7 +1834,43 @@ package body Flow_Generated_Globals.Partial is
       Input_Names  : Name_Sets.Set;
       Output_Names : Name_Sets.Set;
 
-      G : Global_Nodes;
+      function Remove_Constants_Without_Variable_Input
+        (Nodes : Node_Sets.Set)
+         return Node_Sets.Set
+      with Post =>
+          Remove_Constants_Without_Variable_Input'Result.Is_Subset
+            (Of_Set => Nodes);
+      --  Frontend attempts to reject constants without variable input, but
+      --  uses criteria that (necessarily) doesn't know about SPARK_Mode of
+      --  their full views. We need to reject some globals that it misses.
+
+      ---------------------------------------------
+      -- Remove_Constants_Without_Variable_Input --
+      ---------------------------------------------
+
+      function Remove_Constants_Without_Variable_Input
+        (Nodes : Node_Sets.Set)
+         return Node_Sets.Set
+      is
+         Result : Node_Sets.Set;
+      begin
+         for N of Nodes loop
+            if Present (N)
+              and then Ekind (N) = E_Constant
+            then
+               if Has_Variable_Input (N) then
+                  Result.Insert (N);
+               end if;
+
+            else
+               Result.Insert (N);
+            end if;
+         end loop;
+
+         return Result;
+      end Remove_Constants_Without_Variable_Input;
+
+   --  Start of processing for Frontend_Globals
 
    begin
       --  Collect frontend globals using only info from the current compilation
@@ -1699,10 +1878,14 @@ package body Flow_Generated_Globals.Partial is
       --  ??? ignore calls, because they seem too over-aproximating
       Collect_Direct_Computed_Globals (E, Input_Names, Output_Names);
 
-      To_Node_Set (Names => Input_Names,  Nodes => G.Inputs);
-      To_Node_Set (Names => Output_Names, Nodes => G.Outputs);
+      return (Inputs  =>
+                Remove_Constants_Without_Variable_Input
+                  (To_Node_Set (Input_Names)),
+              Outputs =>
+                Remove_Constants_Without_Variable_Input
+                  (To_Node_Set (Output_Names)),
+              Proof_Ins => <>);
 
-      return G;
    end Frontend_Globals;
 
    ------------------------
@@ -1721,6 +1904,11 @@ package body Flow_Generated_Globals.Partial is
             Contracts : Entity_Contract_Maps.Map;
             --  Partial information collected by analysis of inner scopes
             --  needed for the summary of their outer scopes.
+
+            Constant_Graph : Constant_Graphs.Graph;
+            --  Graph with dependencies between constants and their variable
+            --  inputs.
+
          begin
 
             Do_Preanalysis (Contracts);
@@ -1729,10 +1917,9 @@ package body Flow_Generated_Globals.Partial is
                Do_Global (Root_Entity, Contracts);
             end if;
 
-            --  Recursive contract is used when generating the Nonreturning
-            --  contract, so it must be done first.
+            Resolve_Constants (Contracts, Constant_Graph);
 
-            Write_Contracts_To_ALI (Root_Entity, Contracts);
+            Write_Contracts_To_ALI (Root_Entity, Constant_Graph, Contracts);
          end;
       end if;
 
@@ -1848,6 +2035,469 @@ package body Flow_Generated_Globals.Partial is
       end if;
    end Do_Preanalysis;
 
+   -----------
+   -- Print --
+   -----------
+
+   procedure Print (G : Constant_Graphs.Graph)
+   is
+      use Constant_Graphs;
+
+      function NDI (G : Graph; V : Vertex_Id) return Node_Display_Info;
+      --  Pretty-printing for vertices in the dot output
+
+      function EDI
+        (G      : Graph;
+         A      : Vertex_Id;
+         B      : Vertex_Id;
+         Marked : Boolean;
+         Colour : No_Colours) return Edge_Display_Info;
+      --  Pretty-printing for edges in the dot output
+
+      ---------
+      -- NDI --
+      ---------
+
+      function NDI (G : Graph; V : Vertex_Id) return Node_Display_Info
+      is
+         E : constant Entity_Id := G.Get_Key (V);
+      begin
+         if E = Variable_Input then
+            return (Show        => True,
+                    Shape       => Node_Shape_T'First,
+                    Colour      => Null_Unbounded_String,
+                    Fill_Colour => To_Unbounded_String ("gray"),
+                    Label       => To_Unbounded_String ("Variable input"));
+         else
+            return (Show        => True,
+                    Shape       => (if Ekind (E) = E_Constant
+                                    then Shape_Oval
+                                    else Shape_Box),
+                    Colour      => Null_Unbounded_String,
+                    Fill_Colour => Null_Unbounded_String,
+                    Label       => To_Unbounded_String (Full_Source_Name (E)));
+         end if;
+      end NDI;
+
+      ---------
+      -- EDI --
+      ---------
+
+      function EDI
+        (G      : Graph;
+         A      : Vertex_Id;
+         B      : Vertex_Id;
+         Marked : Boolean;
+         Colour : No_Colours) return Edge_Display_Info
+      is
+         pragma Unreferenced (G, A, B, Marked, Colour);
+      begin
+         return
+           (Show   => True,
+            Shape  => Edge_Normal,
+            Colour => Null_Unbounded_String,
+            Label  => Null_Unbounded_String);
+      end EDI;
+
+      --  Local constants
+
+      Filename : constant String :=
+        Get_Name_String (Chars (Main_Unit_Entity)) & "_constants_1";
+
+   --  Start of processing for Print_Graph
+
+   begin
+      if Gnat2Why_Args.Flow_Advanced_Debug then
+         G.Write_Pdf_File
+           (Filename  => Filename,
+            Node_Info => NDI'Access,
+            Edge_Info => EDI'Access);
+      end if;
+   end Print;
+
+   -----------------------
+   -- Resolve_Constants --
+   -----------------------
+
+   procedure Resolve_Constants
+     (Contracts      :     Entity_Contract_Maps.Map;
+      Constant_Graph : out Constant_Graphs.Graph)
+   is
+      --  ??? honestly, I just do not know how if we should care about both
+      --  refined and abstract globals here.
+
+      Todo : Node_Sets.Set;
+      --  Entities to be processed (either constants or subprograms called
+      --  (directly or indirectly) in their initialization expressions.
+
+      -------------------------------------------------------------------------
+      --  List utilities
+      -------------------------------------------------------------------------
+
+      procedure Append (List : in out Node_Lists.List; Set : Node_Sets.Set)
+      with Post => List.Length = List'Old.Length + Set.Length;
+
+      -------------------------------------------------------------------------
+      --  Specs
+      -------------------------------------------------------------------------
+
+      function Represent_Variable_Inputs
+        (Inputs : Node_Lists.List)
+         return Boolean
+      is
+        (Inputs = Variable
+           or else
+        (for all E of Inputs =>
+           Ekind (E) in E_Constant | Entry_Kind | E_Function | E_Procedure))
+        with Ghost;
+      --  A sanity-checking utility for routines that grows the constant graph
+
+      function Direct_Inputs_Of_Constant
+        (E : Entity_Id)
+         return Node_Lists.List
+        with Pre  => Ekind (E) = E_Constant and then Has_Variable_Input (E),
+             Post => Represent_Variable_Inputs
+                        (Direct_Inputs_Of_Constant'Result);
+      --  Returns variable inputs of the initialization of constant E
+
+      function Direct_Inputs_Of_Subprogram
+        (E : Entity_Id)
+         return Node_Lists.List
+        with Pre  => Ekind (E) in  Entry_Kind | E_Function | E_Procedure,
+             Post => Represent_Variable_Inputs
+                        (Direct_Inputs_Of_Subprogram'Result);
+      --  Returns variable inputs coming from the globals or calls of
+      --  subprogram E.
+
+      function Pick_Constants (From : Global_Set) return Node_Lists.List
+      with Post => Pick_Constants'Result.Length <= From.Length
+                     and then
+                   (for all E of Pick_Constants'Result =>
+                      Ekind (E) = E_Constant);
+      --  Selects constants from the given set
+
+      procedure Seed (Constants : Node_Lists.List);
+      --  Seeds the Constant_Graph and Todo with given Constants
+
+      -------------------------------------------------------------------------
+      --  Bodies
+      -------------------------------------------------------------------------
+
+      ------------
+      -- Append --
+      ------------
+
+      procedure Append (List : in out Node_Lists.List; Set : Node_Sets.Set) is
+      begin
+         for E of Set loop
+            List.Append (E);
+         end loop;
+      end Append;
+
+      -------------------------------
+      -- Direct_Inputs_Of_Constant --
+      -------------------------------
+
+      function Direct_Inputs_Of_Constant
+        (E : Entity_Id)
+         return Node_Lists.List
+      is
+         Full : Entity_Id;
+         Expr : Node_Id;
+      begin
+         --  This routine is intentionally mirrored after Has_Variable_Input;
+         --  any change here should be reflected there.
+
+         if Is_Imported (E) then
+            return Variable;
+         end if;
+
+         Expr := Expression (Declaration_Node (E));
+         if Present (Expr) then
+            Full := E;
+         else
+            --  We are dealing with a deferred constant so we need to get to
+            --  the full view.
+            Full := Full_View (E);
+            Expr := Expression (Declaration_Node (Full));
+         end if;
+
+         if not Entity_In_SPARK (Full) then
+            --  We are dealing with an entity that is not in SPARK so we
+            --  assume that it does not have variable input.
+            return Node_Lists.Empty_List;
+         end if;
+
+         declare
+            Variables : constant Flow_Id_Sets.Set :=
+              Get_Variables
+                (Expr,
+                 Scope                => Get_Flow_Scope (Full),
+                 Local_Constants      => Node_Sets.Empty_Set,
+                 Fold_Functions       => True,
+                 Use_Computed_Globals => False);
+
+            Inputs : Node_Lists.List;
+
+         begin
+            --  ??? perhaps this can be rewriten with To_Node_Set,
+            --  Has_Variables and Pick_Constants.
+
+            for Var of Variables loop
+               declare
+                  V : constant Entity_Id := Get_Direct_Mapping_Id (Var);
+
+                  pragma Assert (Is_Global_Entity (V));
+
+               begin
+                  if Ekind (V) = E_Constant then
+                     Inputs.Append (V);
+                  else
+                     return Variable;
+                  end if;
+               end;
+            end loop;
+
+            Append (Inputs, Get_Functions (Expr, Include_Predicates => False));
+
+            return Inputs;
+         end;
+      end Direct_Inputs_Of_Constant;
+
+      ---------------------------------
+      -- Direct_Inputs_Of_Subprogram --
+      ---------------------------------
+
+      function Direct_Inputs_Of_Subprogram
+        (E : Entity_Id)
+         return Node_Lists.List
+      is
+      begin
+         --  ??? protected entries and protected subprograms always have
+         --  variable input; volatile functions are perhaps similar.
+
+         if Is_In_Analyzed_Files (E) then
+            declare
+               Globals : Flow_Nodes renames Contracts (E).Globals;
+
+               function Has_Variables (G : Global_Set) return Boolean is
+                  (for some C of G => Ekind (C) /= E_Constant);
+
+               Inputs : Node_Lists.List;
+
+            begin
+               if Has_Variables (Globals.Refined.Proof_Ins)
+                 or else Has_Variables (Globals.Refined.Inputs)
+               then
+                  return Variable;
+               else
+                  Append (Inputs, Pick_Constants (Globals.Refined.Inputs));
+                  Append (Inputs, Globals.Calls.Conditional_Calls);
+                  Append (Inputs, Globals.Calls.Definite_Calls);
+
+                  return Inputs;
+
+                  --  ??? calls to Pick_Constants repeat iterations done by
+                  --  Has_Variables, but this stays in the same complexity
+                  --  class and makes the code shorter.
+               end if;
+            end;
+         else
+            return To_List (E);
+         end if;
+      end Direct_Inputs_Of_Subprogram;
+
+      --------------------
+      -- Pick_Constants --
+      --------------------
+
+      function Pick_Constants (From : Global_Set) return Node_Lists.List is
+         Constants : Node_Lists.List;
+      begin
+         for E of From loop
+            if Present (E)
+              and then Ekind (E) = E_Constant
+            then
+               Constants.Append (E);
+            end if;
+         end loop;
+
+         return Constants;
+      end Pick_Constants;
+
+      ----------
+      -- Seed --
+      ----------
+
+      procedure Seed (Constants : Node_Lists.List) is
+      begin
+         for E of Constants loop
+            Todo.Include (E);
+            Constant_Graph.Include_Vertex (E);
+         end loop;
+      end Seed;
+
+   --  Start of processing for Resolve_Constants
+
+   begin
+      Constant_Graph := Constant_Graphs.Create;
+
+      --  Add hardcoded representation of the variable input
+
+      Constant_Graph.Add_Vertex (Variable_Input);
+
+      --  Initialize the workset with constants from the generated globals
+      --  ??? better to initialize this when globals are picked from the AST
+
+      for C in Contracts.Iterate loop
+         declare
+            E     : Entity_Id renames Entity_Contract_Maps.Key (C);
+            Contr : Contract  renames Contracts (C);
+         begin
+            --  ??? investigate this
+            if Ekind (E) = E_Package then
+               Seed (Scope_Map (E).Variables);
+               Seed (Scope_Map (E).Ghost_Variables);
+            end if;
+
+            Seed (Pick_Constants (Contr.Globals.Refined.Proof_Ins));
+            Seed (Pick_Constants (Contr.Globals.Refined.Inputs));
+         end;
+      end loop;
+
+      --  Grow graph
+
+      while not Todo.Is_Empty loop
+         declare
+            E : constant Entity_Id := Todo (Todo.First);
+
+            Variable_Inputs : constant Node_Lists.List :=
+              (case Ekind (E) is
+                  when E_Constant =>
+                     Direct_Inputs_Of_Constant (E),
+
+                  when Entry_Kind | E_Function | E_Procedure =>
+                     Direct_Inputs_Of_Subprogram (E),
+
+                  when others =>
+                     raise Program_Error);
+
+            LHS : constant Constant_Graphs.Vertex_Id :=
+              Constant_Graph.Get_Vertex (E);
+
+            RHS : Constant_Graphs.Vertex_Id;
+
+            use type Constant_Graphs.Vertex_Id;
+
+         begin
+            for Input of Variable_Inputs loop
+               RHS := Constant_Graph.Get_Vertex (Input);
+
+               if RHS = Constant_Graphs.Null_Vertex then
+                  Constant_Graph.Add_Vertex (Input, RHS);
+                  Todo.Insert (Input);
+               end if;
+
+               Constant_Graph.Add_Edge (LHS, RHS);
+            end loop;
+
+            Todo.Delete (E);
+         end;
+      end loop;
+
+      --  Dump the graph before closing it
+
+      Print (Constant_Graph);
+
+      Constant_Graph.Close;
+
+   end Resolve_Constants;
+
+   ---------------------
+   -- Resolved_Inputs --
+   ---------------------
+
+   function Resolved_Inputs
+     (E : Entity_Id;
+      Constant_Graph : Constant_Graphs.Graph)
+      return Node_Lists.List
+   is
+      Inputs : Node_Lists.List;
+   begin
+      if Constant_Graph.Edge_Exists (E, Variable_Input) then
+         return Variable;
+      else
+         for V of
+           Constant_Graph.Get_Collection
+             (Constant_Graph.Get_Vertex (E),
+              Constant_Graphs.Out_Neighbours)
+         loop
+            declare
+               Input : constant Entity_Id :=
+                 Constant_Graph.Get_Key (V);
+            begin
+               if Ekind (Input) in E_Function | E_Procedure
+                 and then not Is_In_Analyzed_Files (Input)
+               then
+                  Inputs.Append (Input);
+               end if;
+            end;
+         end loop;
+
+         return Inputs;
+      end if;
+   end Resolved_Inputs;
+
+   ---------------------
+   -- Strip_Constants --
+   ---------------------
+
+   procedure Strip_Constants
+     (From           : in out Flow_Nodes;
+      Constant_Graph :        Constant_Graphs.Graph)
+   is
+
+      procedure Strip (From : in out Global_Nodes);
+      procedure Strip (From : in out Global_Set)
+        with Post => From.Is_Subset (From'Old);
+
+      -----------
+      -- Strip --
+      -----------
+
+      procedure Strip (From : in out Global_Nodes) is
+      begin
+         Strip (From.Proof_Ins);
+         Strip (From.Inputs);
+      end Strip;
+
+      procedure Strip (From : in out Global_Set) is
+         Filtered : Node_Sets.Set;
+      begin
+         for E of From loop
+            if Present (E)
+              and then Ekind (E) = E_Constant
+            then
+               if not Resolved_Inputs (E, Constant_Graph).Is_Empty then
+                  Filtered.Insert (E);
+               end if;
+            else
+               Filtered.Insert (E);
+            end if;
+         end loop;
+
+         Node_Sets.Move (Target => From,
+                         Source => Filtered);
+      end Strip;
+
+      --  Start of processing for Strip_Constants
+
+   begin
+      Strip (From.Proper);
+      Strip (From.Refined);
+      Strip (From.Initializes);
+   end Strip_Constants;
+
    --------------
    -- To_Names --
    --------------
@@ -1858,7 +2508,6 @@ package body Flow_Generated_Globals.Partial is
       return Name_Tasking_Info
    is
       Result : Name_Tasking_Info;
-
    begin
       for EC of Entries loop
          --  For entry calls pretend that we are accessing an object
@@ -1880,17 +2529,40 @@ package body Flow_Generated_Globals.Partial is
       return Result;
    end To_Names;
 
+   function To_Names
+     (Constant_Calls : Constant_Calls_Lists.List)
+      return Name_Constant_Callees_List.List
+   is
+      Result : Name_Constant_Callees_List.List;
+   begin
+      for Elem of Constant_Calls loop
+         Result.Append ((Const => To_Entity_Name (Elem.Const),
+                         Callees => <>));
+
+         declare
+            Callees : Name_Lists.List renames
+              Result (Result.Last).Callees;
+         begin
+            if Elem.Callees = Variable then
+               Callees.Append (Flow_Generated_Globals.Variable_Input);
+            else
+               for Call of Elem.Callees loop
+                  Callees.Append (To_Entity_Name (Call));
+               end loop;
+            end if;
+         end;
+      end loop;
+
+      return Result;
+   end To_Names;
+
    -----------------
    -- To_Node_Set --
    -----------------
 
-   procedure To_Node_Set
-     (Names :     Name_Sets.Set;
-      Nodes : out Node_Sets.Set)
-   is
+   function To_Node_Set (Names : Name_Sets.Set) return Node_Sets.Set is
+      Nodes : Node_Sets.Set;
    begin
-      Nodes := Node_Sets.Empty_Set;
-
       for Name of Names loop
          declare
             Node : constant Entity_Id := Find_Entity (Name);
@@ -1909,24 +2581,79 @@ package body Flow_Generated_Globals.Partial is
             Nodes.Insert (Node);
          end;
       end loop;
+
+      return Nodes;
    end To_Node_Set;
+
+   --------------------------------
+   -- Unresolved_Local_Constants --
+   --------------------------------
+
+   procedure Unresolved_Local_Constants
+     (Locals         :        Node_Lists.List;
+      Constant_Graph :        Constant_Graphs.Graph;
+      Constant_Calls : in out Constant_Calls_Lists.List)
+   is
+   begin
+      for E of Locals loop
+         if Ekind (E) = E_Constant then
+            declare
+               Inputs : Node_Lists.List :=
+                 Resolved_Inputs (E, Constant_Graph);
+            begin
+               Constant_Calls.Append ((Const => E,
+                                       Callees => <>));
+
+               Node_Lists.Move
+                 (Target => Constant_Calls (Constant_Calls.Last).Callees,
+                  Source => Inputs);
+            end;
+         end if;
+      end loop;
+   end Unresolved_Local_Constants;
 
    ----------------------------
    -- Write_Contracts_To_ALI --
    ----------------------------
 
    procedure Write_Contracts_To_ALI
-     (E :        Entity_Id;
-      C : in out Entity_Contract_Maps.Map)
+     (E              :        Entity_Id;
+      Constant_Graph :        Constant_Graphs.Graph;
+      Contracts      : in out Entity_Contract_Maps.Map)
    is
-      Contr : Contract renames C (E);
+      Contr : Contract renames Contracts (E);
+
+      Constant_Calls : Constant_Calls_Lists.List;
 
    begin
       for Child of Scope_Map (E) loop
-         Write_Contracts_To_ALI (Child, C);
+         Write_Contracts_To_ALI (Child, Constant_Graph, Contracts);
       end loop;
 
       if Ekind (E) /= E_Protected_Type then
+
+         --  For externally visible packages record unresolved calls in
+         --  constant initialization expressions.
+         --  ??? condition for "visible" packages should be more restrictive
+
+         if Ekind (E) = E_Package then
+            declare
+               Map : Nested renames Scope_Map (E);
+            begin
+               Unresolved_Local_Constants
+                 (Map.Variables,
+                  Constant_Graph,
+                  Constant_Calls);
+
+               Unresolved_Local_Constants
+                 (Map.Ghost_Variables,
+                  Constant_Graph,
+                  Constant_Calls);
+            end;
+         end if;
+
+         Strip_Constants (Contr.Globals, Constant_Graph);
+
          GG_Register_Direct_Calls (E, Contr.Direct_Calls);
 
          GG_Register_Global_Info
@@ -1957,6 +2684,8 @@ package body Flow_Generated_Globals.Partial is
              Local_Ghost_Variables => To_Name_Set
                (Contr.Local_Ghost_Variables),
 
+             Constant_Calls        => To_Names (Constant_Calls),
+
              Has_Terminate         => Contr.Has_Terminate,
              Nonreturning          => Contr.Nonreturning,
              Nonblocking           => Contr.Nonblocking,
@@ -1965,7 +2694,7 @@ package body Flow_Generated_Globals.Partial is
       end if;
 
       --  Register abstract state components; if any then there
-      --  should bea Refined_State aspect.
+      --  should be Refined_State aspect.
       --  ??? isn't this just checking if there are any
       --  abstract states?
       --  if FA.Kind = Kind_Package_Body

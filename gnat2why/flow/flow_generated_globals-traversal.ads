@@ -31,14 +31,20 @@ package Flow_Generated_Globals.Traversal is
    procedure Dump_Tree;
 
    type Nested is record
-      Subprograms : Node_Lists.List;
-      Packages    : Node_Lists.List;
-      Parent      : Entity_Id;
+      Subprograms     : Node_Lists.List;
+      Packages        : Node_Lists.List;
+      Variables       : Node_Lists.List;
+      Ghost_Variables : Node_Lists.List;
+      Parent          : Entity_Id;
    end record with
      Iterable => (First       => First_Cursor,
                   Next        => Next_Cursor,
                   Has_Element => Has_Element,
                   Element     => Get_Element);
+   --  Variables and Ghost_Variables for packages are objects that can appear
+   --  in the (synthesized) Initialized aspect; for other scopes they are
+   --  constants with (possibly) variable input.
+   --  ??? add some type predicate
 
    use type Node_Lists.Cursor;
 

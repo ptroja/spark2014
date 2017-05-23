@@ -29,6 +29,7 @@ with Ada.Strings.Unbounded;      use Ada.Strings.Unbounded;
 with Ada.Text_IO;                use Ada.Text_IO;
 
 with ALI;                        use ALI;
+with Lib;                        use Lib;
 with Namet;                      use Namet;
 with Osint;                      use Osint;
 with Output;                     use Output;
@@ -206,6 +207,13 @@ package body Flow_Generated_Globals.Phase_2 is
 
    use Name_Graphs;
 
+   package Constant_Graphs is new Graphs
+     (Vertex_Key   => Entity_Name,
+      Key_Hash     => Name_Hash,
+      Edge_Colours => No_Colours,
+      Null_Key     => Entity_Name'Last,
+      Test_Key     => "=");
+
    ----------------------------------------------------------------------
    --  Debug flags
    ----------------------------------------------------------------------
@@ -276,6 +284,10 @@ package body Flow_Generated_Globals.Phase_2 is
 
    Phase_1_Info : Phase_1_Info_Maps.Map;
    --  Information read from ALI files
+
+   Constant_Calls : Name_Graphs.Map;
+   --  Calls from constants to subprograms in their initialization expressions
+   --  ??? this should be map from Entity_Name to Name_Lists.List
 
    function Categorize_Calls
      (EN        : Entity_Name;
@@ -348,6 +360,9 @@ package body Flow_Generated_Globals.Phase_2 is
    ----------------------------------------------------------------------
    --  Debug routines
    ----------------------------------------------------------------------
+
+   procedure Print (G : Constant_Graphs.Graph);
+   --  Print graph with dependencies between constants and their inputs
 
    procedure Print_Tasking_Info_Bag (P : Phase);
    --  Display the tasking-related information
@@ -1337,6 +1352,33 @@ package body Flow_Generated_Globals.Phase_2 is
                   --  ??? Clear the original map as a sanity check
                   --  Clear (V.The_Global_Info.Globals);
 
+                  --  Move constant information to a separate container
+
+                  declare
+                     C : Name_Constant_Callees_List.Cursor :=
+                       V.The_Global_Info.Constant_Calls.First;
+                  begin
+                     while Name_Constant_Callees_List.Has_Element (C) loop
+                        declare
+                           Item     : Name_Constant_Callees
+                             renames V.The_Global_Info.Constant_Calls (C);
+                           Position : Name_Graphs.Cursor;
+                           Inserted : Boolean;
+                        begin
+                           Constant_Calls.Insert
+                             (Key      => Item.Const,
+                              Position => Position,
+                              Inserted => Inserted);
+                           pragma Assert (Inserted);
+
+                           for Call of Item.Callees loop
+                              Constant_Calls (Position).Insert (Call);
+                           end loop;
+                        end;
+                        Name_Constant_Callees_List.Next (C);
+                     end loop;
+                  end;
+
                   Phase_1_Info.Insert (Key      => V.The_Global_Info.Name,
                                        New_Item => V.The_Global_Info);
 
@@ -1584,8 +1626,23 @@ package body Flow_Generated_Globals.Phase_2 is
                                  Contracts :        Entity_Contract_Maps.Map;
                                  Patches   : in out Global_Patch_Lists.List);
 
-         procedure Remove_Constants_Without_Variable_Input;
-         --  Removes edges leading to constants without variable input
+         procedure Resolve_Constants
+           (Contracts      :     Entity_Contract_Maps.Map;
+            Constant_Graph : out Constant_Graphs.Graph);
+         --  Create graph with dependencies between constants and their inputs
+
+         function Resolved_To_Variable_Input
+           (E              : Entity_Name;
+            Constant_Graph : Constant_Graphs.Graph)
+            return Boolean
+           with Pre => Constant_Calls.Contains (E);
+         --  Returns True iff the initialization expression of E is resolved as
+         --  dependend on a variable input.
+
+         procedure Strip_Constants
+           (From           : in out Flow_Names;
+            Constant_Graph :        Constant_Graphs.Graph);
+         --  Filter constants without variable from contract
 
          Highlighted : Any_Entity_Name := Null_Entity_Name;
 
@@ -2170,35 +2227,296 @@ package body Flow_Generated_Globals.Phase_2 is
             end if;
          end Fold_Subtree;
 
-         ---------------------------------------------
-         -- Remove_Constants_Without_Variable_Input --
-         ---------------------------------------------
+         -----------------------
+         -- Resolve_Constants --
+         -----------------------
 
-         procedure Remove_Constants_Without_Variable_Input is
+         procedure Resolve_Constants
+           (Contracts      :     Entity_Contract_Maps.Map;
+            Constant_Graph : out Constant_Graphs.Graph)
+         is
+            Todo : Name_Sets.Set;
+            --  Names to be processed (either constants or subprograms called
+            --  (directly or indirectly) in their initialization expressions.
+
+            use type Ada.Containers.Count_Type;
+
+            function To_List (E : Entity_Name) return Name_Lists.List
+            with Post => To_List'Result.Length = 1
+                           and then
+                         To_List'Result.First_Element = E;
+            --  Returns a singleton list with E
+
+            --  ??? this could go into Common_Containers; in particular,
+            --  To_List has a body here, because it is needed to elaborate
+            --  a constant.
+
+            -------------
+            -- To_List --
+            -------------
+
+            function To_List (E : Entity_Name) return Name_Lists.List is
+               Singleton : Name_Lists.List;
+            begin
+               Singleton.Append (E);
+               return Singleton;
+            end To_List;
+
+            Variable : constant Name_Lists.List := To_List (Variable_Input);
+            --  A singleton containers a special value that represents a
+            --  dependency on a variable input. (By having a special-value
+            --  with the same type as non-variable dependencies we adoid
+            --  discriminated records, which would be just too verbose.)
+
+            -------------------------------------------------------------------
+            --  List utilities
+            -------------------------------------------------------------------
+
+            procedure Append
+              (List : in out Name_Lists.List;
+               Set  :        Name_Sets.Set)
+            with Post => List.Length = List.Length'Old + Set.Length;
+
+            function Direct_Inputs_Of_Constant
+              (E : Entity_Name)
+               return Name_Lists.List;
+            --  Returns variable inputs of the initialization of constant E
+
+            function Direct_Inputs_Of_Subprogram
+              (E : Entity_Name)
+               return Name_Lists.List;
+            --  Returns variable inputs coming from the globals or calls of
+            --  subprogram E.
+
+            function Pick_Constants (From : Name_Sets.Set) return Name_Sets.Set
+              with Post => Pick_Constants'Result.Is_Subset (Of_Set => From)
+                             and then
+                           (for all E of Pick_Constants'Result =>
+                               Constant_Calls.Contains (E));
+            --  Returns constants contained in the given set
+
+            procedure Seed (Constants : Name_Sets.Set);
+            --  Seeds the Constant_Graph and Todo with given Constants
+
+            -------------------------------------------------------------------
+            --  Bodies
+            -------------------------------------------------------------------
+
+            ------------
+            -- Append --
+            ------------
+
+            procedure Append
+              (List : in out Name_Lists.List;
+               Set  :        Name_Sets.Set)
+            is
+            begin
+               for E of Set loop
+                  List.Append (E);
+               end loop;
+            end Append;
+
+            -------------------------------
+            -- Direct_Inputs_Of_Constant --
+            -------------------------------
+
+            function Direct_Inputs_Of_Constant
+              (E : Entity_Name)
+               return Name_Lists.List
+            is
+               S : Name_Sets.Set renames Constant_Calls (E);
+               L : Name_Lists.List;
+               --  ??? this conversion is ugly, do something about it
+            begin
+               for Call of S loop
+                  L.Append (Call);
+               end loop;
+
+               return L;
+            end Direct_Inputs_Of_Constant;
+
+            ---------------------------------
+            -- Direct_Inputs_Of_Subprogram --
+            ---------------------------------
+
+            function Direct_Inputs_Of_Subprogram
+              (E : Entity_Name)
+               return Name_Lists.List
+            is
+               Globals : Flow_Names renames Contracts (E);
+
+               function Has_Variables (G : Name_Sets.Set) return Boolean is
+                 (for some C of G => not Constant_Calls.Contains (C));
+
+               Inputs : Name_Lists.List;
+
+            begin
+               if Has_Variables (Globals.Refined.Proof_Ins)
+                 or else Has_Variables (Globals.Refined.Inputs)
+               then
+                  return Variable;
+               else
+                  Append (Inputs, Pick_Constants (Globals.Refined.Inputs));
+                  Append (Inputs, Globals.Calls.Conditional_Calls);
+                  Append (Inputs, Globals.Calls.Definite_Calls);
+
+                  return Inputs;
+
+                  --  ??? calls to Pick_Constants repeat iterations done by
+                  --  Has_Variables, but this stays in the same complexity
+                  --  class and makes the code shorter.
+               end if;
+            end Direct_Inputs_Of_Subprogram;
+
+            --------------------
+            -- Pick_Constants --
+            --------------------
+
+            function Pick_Constants
+              (From : Name_Sets.Set)
+               return Name_Sets.Set
+            is
+               Constants : Name_Sets.Set;
+            begin
+               for E of From loop
+                  if Constant_Calls.Contains (E) then
+                     Constants.Insert (E);
+                  end if;
+               end loop;
+
+               return Constants;
+            end Pick_Constants;
+
+            ----------
+            -- Seed --
+            ----------
+
+            procedure Seed (Constants : Name_Sets.Set) is
+            begin
+               for E of Constants loop
+                  Todo.Include (E);
+                  Constant_Graph.Include_Vertex (E);
+               end loop;
+            end Seed;
+
+         --  Start of processing for Resolve_Constants
+
          begin
-            --  Detect constants without variable input
-            null;
---              for Glob of Global loop
---                 declare
---                    Const : constant Entity_Id := Find_Entity (Glob);
---                 begin
---                    if Present (Const)
---                      and then Ekind (Const) = E_Constant
---                      and then not Has_Variable_Input (Const)
---                    then
---                       --  Remove all incoming edges
---                       declare
---                          Const_V : constant Vertex_Id :=
---                        Global_Graph.Get_Vertex (Global_Id'(Kind => Variable,
---                                                              Name => Glob));
---
---                       begin
---                          Global_Graph.Clear_Vertex (Const_V);
---                       end;
---                    end if;
---                 end;
---              end loop;
-         end Remove_Constants_Without_Variable_Input;
+            Constant_Graph := Constant_Graphs.Create;
+
+            --  Add hardcoded representation of the variable input
+
+            Constant_Graph.Add_Vertex (Variable_Input);
+
+            --  Initialize the workset with constants in the generated globals
+            --  ??? better to initialize this when globals are picked from the
+            --  ALI.
+
+            for Contr of Contracts loop
+               Seed (Pick_Constants (Contr.Refined.Proof_Ins));
+               Seed (Pick_Constants (Contr.Refined.Inputs));
+               Seed (Pick_Constants (Contr.Initializes));
+            end loop;
+
+            --  Grow graph
+
+            while not Todo.Is_Empty loop
+               declare
+                  E : constant Entity_Name := Todo (Todo.First);
+
+                  Variable_Inputs : constant Name_Lists.List :=
+                    (if Constant_Calls.Contains (E)
+                     then Direct_Inputs_Of_Constant (E)
+                     else Direct_Inputs_Of_Subprogram (E));
+
+                  LHS : constant Constant_Graphs.Vertex_Id :=
+                    Constant_Graph.Get_Vertex (E);
+
+                  RHS : Constant_Graphs.Vertex_Id;
+
+                  use type Constant_Graphs.Vertex_Id;
+
+               begin
+                  for Input of Variable_Inputs loop
+                     RHS := Constant_Graph.Get_Vertex (Input);
+
+                     if RHS = Constant_Graphs.Null_Vertex then
+                        Constant_Graph.Add_Vertex (Input, RHS);
+                        Todo.Insert (Input);
+                     end if;
+
+                     Constant_Graph.Add_Edge (LHS, RHS);
+                  end loop;
+
+                  Todo.Delete (E);
+               end;
+            end loop;
+
+            --  Dump the graph before closing it
+
+            Print (Constant_Graph);
+
+            Constant_Graph.Close;
+         end Resolve_Constants;
+
+         --------------------------------
+         -- Resolved_To_Variable_Input --
+         --------------------------------
+
+         function Resolved_To_Variable_Input
+           (E              : Entity_Name;
+            Constant_Graph : Constant_Graphs.Graph)
+            return Boolean
+         is
+           (Constant_Graph.Edge_Exists (E, Variable_Input));
+
+         -----------
+         -- Strip --
+         -----------
+
+         procedure Strip_Constants
+           (From           : in out Flow_Names;
+            Constant_Graph :        Constant_Graphs.Graph)
+         is
+
+            procedure Strip (From : in out Global_Names);
+            procedure Strip (From : in out Name_Sets.Set)
+              with Post => From.Is_Subset (From'Old);
+
+            -----------
+            -- Strip --
+            -----------
+
+            procedure Strip (From : in out Global_Names) is
+            begin
+               Strip (From.Proof_Ins);
+               Strip (From.Inputs);
+            end Strip;
+
+            procedure Strip (From : in out Name_Sets.Set) is
+               Filtered : Name_Sets.Set;
+            begin
+               for E of From loop
+                  if Constant_Calls.Contains (E) then
+                     if Resolved_To_Variable_Input (E, Constant_Graph) then
+                        Filtered.Insert (E);
+                     end if;
+                  else
+                     Filtered.Insert (E);
+                  end if;
+               end loop;
+
+               Name_Sets.Move (Target => From,
+                               Source => Filtered);
+            end Strip;
+
+         --  Start of processing for Strip_Constants
+
+         begin
+            Strip (From.Proper);
+            Strip (From.Refined);
+            Strip (From.Initializes);
+         end Strip_Constants;
 
       --  Start of processing for Resolve_Globals
 
@@ -2234,7 +2552,16 @@ package body Flow_Generated_Globals.Phase_2 is
 
             --  Remove edges leading to constants which do not have variable
             --  input.
-            Remove_Constants_Without_Variable_Input;
+            declare
+               Constant_Graph : Constant_Graphs.Graph;
+
+            begin
+               Resolve_Constants (Global_Contracts, Constant_Graph);
+
+               for C of Global_Contracts loop
+                  Strip_Constants (C, Constant_Graph);
+               end loop;
+            end;
          end if;
 
       end Resolve_Globals;
@@ -3048,5 +3375,85 @@ package body Flow_Generated_Globals.Phase_2 is
          return Compare_Names;
       end if;
    end "<";
+
+   -----------
+   -- Print --
+   -----------
+
+   procedure Print (G : Constant_Graphs.Graph)
+   is
+      use Constant_Graphs;
+
+      function NDI (G : Graph; V : Vertex_Id) return Node_Display_Info;
+      --  Pretty-printing for vertices in the dot output
+
+      function EDI
+        (G      : Graph;
+         A      : Vertex_Id;
+         B      : Vertex_Id;
+         Marked : Boolean;
+         Colour : No_Colours) return Edge_Display_Info;
+      --  Pretty-printing for edges in the dot output
+
+      ---------
+      -- NDI --
+      ---------
+
+      function NDI (G : Graph; V : Vertex_Id) return Node_Display_Info
+      is
+         E : constant Entity_Name := G.Get_Key (V);
+      begin
+         if E = Variable_Input then
+            return (Show        => True,
+                    Shape       => Node_Shape_T'First,
+                    Colour      => Null_Unbounded_String,
+                    Fill_Colour => To_Unbounded_String ("gray"),
+                    Label       => To_Unbounded_String ("Variable input"));
+         else
+            return (Show        => True,
+                    Shape       => (if Constant_Calls.Contains (E)
+                                    then Shape_Oval
+                                    else Shape_Box),
+                    Colour      => Null_Unbounded_String,
+                    Fill_Colour => Null_Unbounded_String,
+                    Label       => To_Unbounded_String (To_String (E)));
+         end if;
+      end NDI;
+
+      ---------
+      -- EDI --
+      ---------
+
+      function EDI
+        (G      : Graph;
+         A      : Vertex_Id;
+         B      : Vertex_Id;
+         Marked : Boolean;
+         Colour : No_Colours) return Edge_Display_Info
+      is
+         pragma Unreferenced (G, A, B, Marked, Colour);
+      begin
+         return
+           (Show   => True,
+            Shape  => Edge_Normal,
+            Colour => Null_Unbounded_String,
+            Label  => Null_Unbounded_String);
+      end EDI;
+
+      --  Local constants
+
+      Filename : constant String :=
+        Get_Name_String (Chars (Main_Unit_Entity)) & "_constants_2";
+
+   --  Start of processing for Print_Graph
+
+   begin
+      if Gnat2Why_Args.Flow_Advanced_Debug then
+         G.Write_Pdf_File
+           (Filename  => Filename,
+            Node_Info => NDI'Access,
+            Edge_Info => EDI'Access);
+      end if;
+   end Print;
 
 end Flow_Generated_Globals.Phase_2;

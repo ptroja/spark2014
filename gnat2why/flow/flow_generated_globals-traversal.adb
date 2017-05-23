@@ -22,9 +22,11 @@
 ------------------------------------------------------------------------------
 
 with Ada.Text_IO;
-with Nlists;      use Nlists;
-with Sem_Util;    use Sem_Util;
-with Sinfo;       use Sinfo;
+with Nlists;       use Nlists;
+with Sem_Util;     use Sem_Util;
+with Sinfo;        use Sinfo;
+with SPARK_Util;   use SPARK_Util;
+with Flow_Utility; use Flow_Utility;
 
 package body Flow_Generated_Globals.Traversal is
 
@@ -49,7 +51,7 @@ package body Flow_Generated_Globals.Traversal is
    procedure Build_Tree (CU : Node_Id) is
 
       function Parent_Scope (E : Entity_Id) return Entity_Id
-        with Pre  => Ekind (E) in Container_Scope,
+        with Pre  => Ekind (E) in Container_Scope | E_Constant,
              Post => Ekind (Parent_Scope'Result) in Container_Scope;
 
       procedure Process (N : Node_Id);
@@ -81,6 +83,11 @@ package body Flow_Generated_Globals.Traversal is
 
          procedure Insert (E : Entity_Id)
          with Pre => Ekind (E) in Container_Scope;
+
+         procedure Insert_Object (E : Entity_Id)
+         with Pre => Ekind (E) in E_Constant | E_Variable;
+         --  Insert E to either Variables or Ghost_Variables depending on its
+         --  Ghost status.
 
          ------------
          -- Insert --
@@ -117,12 +124,28 @@ package body Flow_Generated_Globals.Traversal is
                   end if;
 
                   Scope_Map.Insert (Key      => E,
-                                    New_Item => (Packages    => <>,
-                                                 Subprograms => <>,
-                                                 Parent      => P));
+                                    New_Item => (Packages        => <>,
+                                                 Subprograms     => <>,
+                                                 Variables       => <>,
+                                                 Ghost_Variables => <>,
+                                                 Parent          => P));
                end;
             end if;
          end Insert;
+
+         -------------------
+         -- Insert_Object --
+         -------------------
+
+         procedure Insert_Object (E : Entity_Id) is
+            Mapping : Nested renames Scope_Map (Parent_Scope (E));
+         begin
+            if Is_Ghost_Entity (E) then
+               Mapping.Ghost_Variables.Append (E);
+            else
+               Mapping.Variables.Append (E);
+            end if;
+         end Insert_Object;
 
       --  Start of processing for Process
 
@@ -144,6 +167,19 @@ package body Flow_Generated_Globals.Traversal is
                if No (Corresponding_Spec_Of_Stub (N)) then
                   Insert (Unique_Defining_Entity (N));
                end if;
+
+            when N_Object_Declaration =>
+               declare
+                  E : constant Entity_Id := Defining_Entity (N);
+               begin
+                  if Ekind (E) = E_Constant
+                    and then E = Unique_Entity (E)
+                    and then Has_Variable_Input (E)
+                    and then not Is_Part_Of_Concurrent_Object (E)
+                  then
+                     Insert_Object (E);
+                  end if;
+               end;
 
             when others =>
                null;
