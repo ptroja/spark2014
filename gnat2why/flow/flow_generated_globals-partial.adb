@@ -1484,7 +1484,7 @@ package body Flow_Generated_Globals.Partial is
       --
       --  Note this logic is done in Categorize_Calls.
 
-      function Down_Project (G : Global_Nodes; E : Entity_Id)
+      function Down_Project (G : Global_Nodes; Caller : Entity_Id)
                              return Global_Nodes;
 
       function Is_Fully_Written
@@ -1652,22 +1652,22 @@ package body Flow_Generated_Globals.Partial is
       -- Down_Project --
       ------------------
 
-      function Down_Project (G : Global_Nodes; E : Entity_Id)
+      function Down_Project (G : Global_Nodes; Caller : Entity_Id)
                              return Global_Nodes
       is
          Analyzed_View : constant Flow_Scope :=
-           (case Ekind (E) is
+           (case Ekind (Caller) is
                when Entry_Kind
                   | E_Function
                   | E_Procedure
                   | E_Protected_Type
                   | E_Task_Type
                =>
-                  Get_Flow_Scope (Get_Body (E)),
+                  Get_Flow_Scope (Get_Body (Caller)),
 
                when E_Package
                =>
-                 (E, Body_Part),
+                 (Caller, Body_Part),
 
                when others
                =>
