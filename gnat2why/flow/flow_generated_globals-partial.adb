@@ -2258,7 +2258,14 @@ package body Flow_Generated_Globals.Partial is
                end;
             end loop;
 
-            Append (Inputs, Get_Functions (Expr, Include_Predicates => False));
+            --  Only care about functions whose globals couldn't be resolved
+            --  by Get_Variables.
+
+            for F of Get_Functions (Expr, Include_Predicates => False) loop
+               if not Has_User_Supplied_Globals (F) then
+                  Inputs.Append (F);
+               end if;
+            end loop;
 
             return Inputs;
          end;
