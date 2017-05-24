@@ -2900,7 +2900,8 @@ package body Flow_Generated_Globals.Phase_2 is
                --  * has already been detected as potentially nonreturning
                --    in phase 1 (is contained in Nonreturning_Subprograms)
                --  * is recursive.
-               if not Phase_1_Info (Callee).Has_Terminate
+               if not (Phase_1_Info.Contains (Callee)
+                       and then Phase_1_Info (Callee).Has_Terminate)
                  and then Is_Directly_Nonreturning (Callee)
                then
                   return True;
