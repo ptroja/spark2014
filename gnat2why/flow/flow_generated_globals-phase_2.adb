@@ -196,6 +196,10 @@ package body Flow_Generated_Globals.Phase_2 is
       Initializes : Name_Sets.Set;
       --  Only meaningful for packages
    end record;
+   --  An updated version of a Global contract to be kept separately until a
+   --  full round of resolving is done. This ensures that the algorithm uses
+   --  the same intermediate contracts no matter in what order the entities
+   --  are processed.
 
    package Global_Patch_Lists is new Ada.Containers.Doubly_Linked_Lists
      (Element_Type => Global_Patch);
@@ -1610,21 +1614,30 @@ package body Flow_Generated_Globals.Phase_2 is
 
       Resolve_Globals : declare
 
-         procedure Analyze_Remote_Calls;
+         use type Ada.Containers.Count_Type;
 
          procedure Debug (Msg : String);
-
          procedure Dump_Contract (Scop : Entity_Id);
-
          procedure Dump_Main_Unit_Contracts (Highlight : Entity_Name);
+         --  Debug utilities
 
          procedure Fold (Folded    :        Entity_Name;
                          Contracts :        Entity_Contract_Maps.Map;
-                         Patches   : in out Global_Patch_Lists.List);
+                         Patches   : in out Global_Patch_Lists.List)
+         with Post => Patches.Length = Patches.Length'Old + 1;
+         --  Resolve globals of Folded and append the update to Patches
 
          procedure Fold_Subtree (Folded    :        Entity_Id;
                                  Contracts :        Entity_Contract_Maps.Map;
-                                 Patches   : in out Global_Patch_Lists.List);
+                                 Patches   : in out Global_Patch_Lists.List)
+         with Post => Patches.Length >= Patches.Length'Old;
+         --  Recursively resolve globals of Folded and entities nested in it;
+         --  append the update to Patches (??? except for protected type).
+
+         procedure Analyze_Remote_Calls;
+         --  Resolve globals of entities from other compilation units, i.e.
+         --  subprograms visible by Entity_Id (to have globals for proof) and
+         --  packages (to know what is initialized).
 
          procedure Resolve_Constants
            (Contracts      :     Entity_Contract_Maps.Map;
@@ -1676,6 +1689,9 @@ package body Flow_Generated_Globals.Phase_2 is
                end if;
             end loop;
 
+            --  ??? we only need this for packages with globals that are
+            --  mentioned in the contracts which we have just completed.
+
             for C in Phase_1_Info.Iterate loop
                declare
                   EN : Entity_Name renames Phase_1_Info_Maps.Key (C);
@@ -1699,15 +1715,11 @@ package body Flow_Generated_Globals.Phase_2 is
 
             --  ??? copy-pasted
             for Patch of Patches loop
-               declare
-                  Updated : Flow_Names renames
-                    Global_Contracts (Patch.Entity);
-               begin
-                  Updated := Flow_Names'(Proper      => Patch.Proper,
-                                         Refined     => Patch.Refined,
-                                         Initializes => Patch.Initializes,
-                                         Calls       => <>);
-               end;
+               Global_Contracts (Patch.Entity) :=
+                 Flow_Names'(Proper      => Patch.Proper,
+                             Refined     => Patch.Refined,
+                             Initializes => Patch.Initializes,
+                             Calls       => <>);
             end loop;
 
          end Analyze_Remote_Calls;
@@ -2143,8 +2155,11 @@ package body Flow_Generated_Globals.Phase_2 is
          --  Start of processing for Fold
 
          begin
+            --  First we resolve globals coming from the globals...
             Update := (Refined => Collect (Folded),
                        others  => <>);
+
+            --  ... and then up-project them as necessary
 
             declare
                Partial, Projected : Name_Sets.Set;
@@ -2246,8 +2261,6 @@ package body Flow_Generated_Globals.Phase_2 is
             Todo : Name_Sets.Set;
             --  Names to be processed (either constants or subprograms called
             --  (directly or indirectly) in their initialization expressions.
-
-            use type Ada.Containers.Count_Type;
 
             function To_List (E : Entity_Name) return Name_Lists.List
             with Post => To_List'Result.Length = 1

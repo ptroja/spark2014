@@ -31,6 +31,8 @@ with Flow_Utility; use Flow_Utility;
 package body Flow_Generated_Globals.Traversal is
 
    Debug : constant Boolean := False;
+   --  Control debug output
+   --  ??? rename
 
    Root : Entity_Id := Empty;
 
@@ -207,8 +209,8 @@ package body Flow_Generated_Globals.Traversal is
 
       procedure Dump (E : Entity_Id) is
       begin
-         for Childred of Scope_Map (E) loop
-            Dump (E);
+         for Child of Scope_Map (E) loop
+            Dump (Child);
          end loop;
          Ada.Text_IO.Put_Line ("***" & Unique_Name (E));
       end Dump;
@@ -564,6 +566,7 @@ package body Flow_Generated_Globals.Traversal is
       --  Local variables
 
       Lu : Node_Id;
+      --  ??? Library unit
 
    --  Start of processing for Traverse_Compilation_Unit
 

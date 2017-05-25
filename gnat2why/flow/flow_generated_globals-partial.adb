@@ -58,6 +58,8 @@ package body Flow_Generated_Globals.Partial is
    ----------------------------------------------------------------------------
 
    Indent : constant String := "  ";
+   --  ??? use indent/outdent facilities from Output (requires writing some
+   --  wrappers about ANSI color strings)
 
    ----------------------------------------------------------------------------
    --  Utilities for constants with variable input
@@ -102,16 +104,16 @@ package body Flow_Generated_Globals.Partial is
    --  Returns True iff sets A, B, C are mutually disjoint
 
    function Is_Caller_Entity (E : Entity_Id) return Boolean;
-   --  Returns True iff E represent an entity that is might call other routines
+   --  Returns True iff E represent an entity is can call other routines
 
    function Is_Global_Entity (E : Entity_Id) return Boolean;
-   --  Returns True iff E represent an entity that may acts as a global
+   --  Returns True iff E represent an entity that can be a global
 
    function Is_Heap_Entity (E : Entity_Id) return Boolean renames No;
    --  Returns True iff E represens heap (which is in turn represented by an
    --  empty entity id and __HEAP entity name).
 
-   function Is_Proper_Callee (E : Entity_Id) return Boolean;
+   function Is_Callable (E : Entity_Id) return Boolean;
    --  Returns True iff E might be called
 
    function Is_Callee (E : Entity_Id) return Boolean;
@@ -124,10 +126,11 @@ package body Flow_Generated_Globals.Partial is
      (Is_In_Analyzed_Files (E)
       and then Scope_Within_Or_Same (E, Analyzed))
    with Pre => Is_In_Analyzed_Files (Analyzed);
-   --  Similar to Scope_Within_Or_Same, but returns for entities in child units
-   --  (which strictly speaking are "within" the scope of the parent packages).
-   --  This routine is only intented to be called to detect entities belonging
-   --  to scopes of the current compilation uni (hence the Pre).
+   --  Determines if entity E is the same as Analyzed or is "truly" within,
+   --  i.e. in the same compilation unit as Analyzed and inside Analyzed. (It
+   --  differs from Scope_Within_Or_Same for entities in child units). This
+   --  routine is only intented to detect entities belonging to scopes of the
+   --  current compilation unit (hence the Pre).
 
    ----------------------
    -- Is_Caller_Entity --
@@ -193,7 +196,7 @@ package body Flow_Generated_Globals.Partial is
                                        Call_Nodes.Definite_Calls);
 
    type Flow_Nodes is record
-      Proper  : Global_Nodes;
+      Proper  : Global_Nodes;  --  ??? Abstract
       Refined : Global_Nodes;
 
       Initializes : Global_Set;
@@ -227,7 +230,7 @@ package body Flow_Generated_Globals.Partial is
    type Contract is record
       Globals : Flow_Nodes;
 
-      Direct_Calls      : Node_Sets.Set;  --   ??? Callee_Set
+      Direct_Calls : Node_Sets.Set;  --   ??? Callee_Set
       --  For compatibility with old GG (e.g. assumptions)
       --
       --  ### All the direct calls; this is what we need for the
@@ -271,7 +274,7 @@ package body Flow_Generated_Globals.Partial is
    --  _fully_ populated by Do_Global.
 
    package Entity_Contract_Maps is new Ada.Containers.Hashed_Maps
-     (Key_Type        => Entity_Id,
+     (Key_Type        => Entity_Id,  --  ??? some Checked_Entity_Id
       Element_Type    => Contract,
       Hash            => Node_Hash,
       Equivalent_Keys => "=");
@@ -311,10 +314,12 @@ package body Flow_Generated_Globals.Partial is
    ----------------------------------------------------------------------------
 
    function Preanalyze_Body (E : Entity_Id) return Contract;
+   --  Direct contract based on the analysis of E, when body is available
 
    function Preanalyze_Spec (E : Entity_Id) return Contract
    with Pre => (if Entity_In_SPARK (E)
                 then not Entity_Body_In_SPARK (E));
+   --  Direct contract based on the analysis of E, when only spec is available
 
    function Categorize_Calls
      (E         : Entity_Id;
@@ -395,8 +400,12 @@ package body Flow_Generated_Globals.Partial is
    procedure Dump (Contracts : Entity_Contract_Maps.Map; Analyzed : Entity_Id);
    --  Display contracts highlighing the analyzed entity
 
-   procedure Filter_Local (E : Entity_Id; Nodes : in out Node_Sets.Set);
+   procedure Filter_Local (E : Entity_Id; Nodes : in out Node_Sets.Set)
+   with Post => Nodes.Is_Subset (Of_Set => Nodes'Old);
+   --  Remove those Nodes which are declared inside E
+
    procedure Filter_Local (E : Entity_Id; G : in out Global_Nodes);
+   --  Same as above, lifted to container with Proof_In/Input/Output globals
 
    procedure Fold (Folded    :        Entity_Id;
                    Analyzed  :        Entity_Id;
@@ -542,10 +551,10 @@ package body Flow_Generated_Globals.Partial is
          end case;
       end if;
 
-      --  Register direct calls without splitting them into proof, definite and
-      --  conditional; this is necessary because splitting still looses calls
-      --  to protected subprograms, which are handled as accesses to global
-      --  variables.
+      --  Register direct calls without splitting them into proof, definite
+      --  and conditional; this is necessary because calls to subprograms with
+      --  user-written Global or Depends contracts are resolved inline and do
+      --  not appear in proof, definite or conditional.
       --  ??? not sure about protected types
       if Ekind (E) /= E_Protected_Type then
          Contr.Direct_Calls := FA.Direct_Calls;
@@ -648,8 +657,9 @@ package body Flow_Generated_Globals.Partial is
       then
          if Has_User_Supplied_Globals (E) then
 
-            --  ??? do nothing?
             Contr.Globals.Proper := Contract_Globals (E, Refined => False);
+
+            --  ??? not sure what happens about refined globals
 
             Contr.Tasking (Unsynch_Accesses) :=
               Unsynchronized_Globals (Contr.Globals.Proper);
@@ -672,12 +682,12 @@ package body Flow_Generated_Globals.Partial is
       Contr.Globals.Calls.Conditional_Calls := Frontend_Calls (E);
 
       pragma Assert
-        (if Is_Proper_Callee (E)
+        (if Is_Callable (E)
          then Contract_Calls (E).Is_Subset
                 (Of_Set => Contr.Globals.Calls.Conditional_Calls));
 
       if Entity_In_SPARK (E) then
-         if Is_Proper_Callee (E) then
+         if Is_Callable (E) then
             Contr.Direct_Calls := Contract_Calls (E);
          end if;
 
@@ -719,8 +729,8 @@ package body Flow_Generated_Globals.Partial is
             end;
          end if;
 
-         --  We register subprograms with body not in SPARK as nonreturning
-         --  except when they are:
+         --  We register subprograms with their body not in SPARK as
+         --  nonreturning except when they are:
          --  * predefined (or are instances of predefined subprograms)
          --  * imported
          --  * intrinsic
@@ -737,15 +747,12 @@ package body Flow_Generated_Globals.Partial is
               (Has_No_Body_Yet (E)
                and then not No_Return (E)));
 
-         --  Register accesses to unsynchronized states and
-         --  variables that occur in contract.
-         --  Collect_Unsynchronized_Globals (Contr.Proof_Ins);
-         --  Collect_Unsynchronized_Globals (Contr.Inputs);
-         --  Collect_Unsynchronized_Globals (Contr.Outputs);
-
+         --  For library-level packages and protected-types the non-blocking
+         --  status is meaningless; for others conservatively assume that they
+         --  are blocking.
          Contr.Nonblocking :=
            (if Is_Callee (E)
-            then False --  ??? first approximation
+            then False
             else Meaningless);
 
          --  In a contract it is syntactically not allowed to suspend on a
@@ -757,7 +764,7 @@ package body Flow_Generated_Globals.Partial is
          pragma Assert (Contr.Tasking (Locks).Is_Empty);
          pragma Assert (Contr.Entry_Calls.Is_Empty);
 
-      --  Otherwise, fill in dummy value
+      --  Otherwise, fill in dummy values
 
       else
          pragma Assert (Contr.Direct_Calls.Is_Empty);
@@ -1089,7 +1096,7 @@ package body Flow_Generated_Globals.Partial is
          Calls.Union (Get_Functions (Expr, Include_Predicates => True));
       end Collect_Calls;
 
-   --  Start of processing for Calls_In_Visible_Contracts
+   --  Start of processing for Contract_Calls
 
    begin
       for Expr of Get_Precondition_Expressions (E) loop
@@ -1203,12 +1210,7 @@ package body Flow_Generated_Globals.Partial is
             --  consider what goes into the spec.
 
             for Patch of Patches loop
-               declare
-                  Updated : Contract renames Contracts (Patch.Entity);
-               begin
-                  Updated.Globals := Patch.Globals;
-               end;
-               --  ### This could re-use maps maybe?
+               Contracts (Patch.Entity).Globals := Patch.Globals;
             end loop;
          end;
       end if;
@@ -1522,6 +1524,7 @@ package body Flow_Generated_Globals.Partial is
                if Callee = Analyzed
                  or else Parent_Scope (Callee) = Analyzed
                then
+                  --  ??? flatten the condition, e.g. make it a function
                   if (case Ekind (Callee) is
                          when E_Package =>
                             Present (Get_Pragma (Callee, Pragma_Initializes)),
@@ -1899,6 +1902,9 @@ package body Flow_Generated_Globals.Partial is
       --  GG section in ALI must be present, even if it is empty
       GG_Write_Initialize (GNAT_Root);
 
+      --  Ignore compilation units that only rename other units; the renamings
+      --  are expanded by the frontend.
+
       if Present (Root_Entity) then
          declare
             Contracts : Entity_Contract_Maps.Map;
@@ -1938,14 +1944,14 @@ package body Flow_Generated_Globals.Partial is
 
    function Is_Callee (E : Entity_Id) return Boolean is
    begin
-      if Is_Proper_Callee (E) then
+      if Is_Callable (E) then
          return True;
       else
          declare
             S : constant Entity_Id := Enclosing_Subprogram (E);
 
          begin
-            return Present (S) and then Is_Proper_Callee (S);
+            return Present (S) and then Is_Callable (S);
          end;
       end if;
    end Is_Callee;
@@ -1959,11 +1965,11 @@ package body Flow_Generated_Globals.Partial is
       G.Inputs.Is_Empty and then
       G.Outputs.Is_Empty);
 
-   ----------------------
-   -- Is_Proper_Callee --
-   ----------------------
+   -----------------
+   -- Is_Callable --
+   -----------------
 
-   function Is_Proper_Callee (E : Entity_Id) return Boolean is
+   function Is_Callable (E : Entity_Id) return Boolean is
      (Ekind (E) in Entry_Kind | E_Function | E_Procedure);
 
    --------------------
@@ -1993,7 +1999,7 @@ package body Flow_Generated_Globals.Partial is
                | E_Function
                | E_Procedure
                | E_Task_Type
-               =>
+            =>
                Contr := (if Entity_In_SPARK (E)
                            and then Entity_Body_In_SPARK (E)
                          then Preanalyze_Body (E)
@@ -2014,7 +2020,7 @@ package body Flow_Generated_Globals.Partial is
 
          --  Terminating stuff, picked no matter if body is in SPARK
          Contr.Has_Terminate :=
-           (if Is_Proper_Callee (E)
+           (if Is_Callable (E)
             then Has_Terminate_Annotation (E)
             else Meaningless);
 

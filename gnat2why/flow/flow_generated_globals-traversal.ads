@@ -46,35 +46,26 @@ package Flow_Generated_Globals.Traversal is
    --  constants with (possibly) variable input.
    --  ??? add some type predicate
 
-   use type Node_Lists.Cursor;
-
-   function First_Cursor (Cont : Nested) return Node_Lists.Cursor is
-     (if Cont.Subprograms.Is_Empty
-      then Cont.Packages.First
-      else Cont.Subprograms.First);
+   function First_Cursor (Cont : Nested) return Node_Lists.Cursor;
+   --  For aspect Iterable
 
    function Next_Cursor
      (Cont     : Nested;
       Position : Node_Lists.Cursor)
-      return Node_Lists.Cursor
-   is
-     (if Position = Cont.Subprograms.Last
-      then Cont.Packages.First
-      else Node_Lists.Next (Position));
+      return Node_Lists.Cursor;
+   --  For aspect Iterable
 
    function Has_Element
      (Cont     : Nested;
       Position : Node_Lists.Cursor)
-      return Boolean
-   is
-     (Node_Lists.Has_Element (Position));
+      return Boolean;
+   --  For aspect Iterable
 
    function Get_Element
      (Cont     : Nested;
       Position : Node_Lists.Cursor)
-      return Entity_Id
-   is
-     (Node_Lists.Element (Position));
+      return Entity_Id;
+   --  For aspect Iterable
 
    package Nested_Scopes is new
      Ada.Containers.Hashed_Maps (Key_Type        => Entity_Id,
@@ -119,5 +110,53 @@ package Flow_Generated_Globals.Traversal is
      (Process : not null access procedure (E : Entity_Id));
    --  Iterate over scopes of the main unit in bottom-up fashion
    --  ??? deprecated
+
+private
+
+   use type Node_Lists.Cursor;
+
+   ------------------
+   -- First_Cursor --
+   ------------------
+
+   function First_Cursor (Cont : Nested) return Node_Lists.Cursor is
+     (if Cont.Subprograms.Is_Empty
+      then Cont.Packages.First
+      else Cont.Subprograms.First);
+
+   -----------------
+   -- Next_Cursor --
+   -----------------
+
+   function Next_Cursor
+     (Cont     : Nested;
+      Position : Node_Lists.Cursor)
+      return Node_Lists.Cursor
+   is
+     (if Position = Cont.Subprograms.Last
+      then Cont.Packages.First
+      else Node_Lists.Next (Position));
+
+   -----------------
+   -- Has_Element --
+   -----------------
+
+   function Has_Element
+     (Cont     : Nested;
+      Position : Node_Lists.Cursor)
+      return Boolean
+   is
+     (Node_Lists.Has_Element (Position));
+
+   -----------------
+   -- Get_Element --
+   -----------------
+
+   function Get_Element
+     (Cont     : Nested;
+      Position : Node_Lists.Cursor)
+      return Entity_Id
+   is
+     (Node_Lists.Element (Position));
 
 end Flow_Generated_Globals.Traversal;

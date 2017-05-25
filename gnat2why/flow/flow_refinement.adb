@@ -513,7 +513,7 @@ package body Flow_Refinement is
 
                      if Possible_Hidden_Components then
                         --  We seem to have an abstract state which has no
-                        --  refinement, or where we have unexpanded state. Lets
+                        --  refinement, or where we have unexpanded state;
                         --  include the abstract state itself.
                         P.Include (E);
                      end if;

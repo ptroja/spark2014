@@ -37,7 +37,7 @@ with Flow_Classwide;                   use Flow_Classwide;
 with Flow_Debug;                       use Flow_Debug;
 with Flow_Generated_Globals;           use Flow_Generated_Globals;
 with Flow_Generated_Globals.Partial;
-with Flow_Generated_Globals.Traversal;
+with Flow_Generated_Globals.Traversal; use Flow_Generated_Globals.Traversal;
 with Flow_Generated_Globals.Phase_2;   use Flow_Generated_Globals.Phase_2;
 with Flow_Error_Messages;              use Flow_Error_Messages;
 with Flow_Utility;                     use Flow_Utility;
@@ -79,8 +79,6 @@ package body Flow is
    ------------------------------------------------------------
 
    use Flow_Graphs;
-   use Partial_Contract_Lists;
-   use Name_Sets;
 
    Temp_String : Unbounded_String := Null_Unbounded_String;
 
@@ -981,9 +979,9 @@ package body Flow is
       procedure Debug_GG_Source;
       --  Dump information about the source of GG information; only in phase 1
 
-      -----------------
+      -----------
       -- Debug --
-      -----------------
+      -----------
 
       procedure Debug (Str : String) is
       begin
@@ -1254,7 +1252,6 @@ package body Flow is
    -------------------------------
 
    procedure Build_Graphs_For_Analysis (FA_Graphs : out Analysis_Maps.Map) is
-      use Flow_Generated_Globals.Traversal;
 
       procedure Build_Graphs_For_Entity (E : Entity_Id);
       --  Build flow analysis graphs for the entity represented by the Subtree
@@ -1309,6 +1306,7 @@ package body Flow is
          end case;
 
          if Present (Graph_Start) then
+            --  ???  can graph be build and analyzed one-by-one?
             FA_Graphs.Insert (Key      => Graph_Start,
                               New_Item => Flow_Analyse_Entity
                                             (Graph_Start,

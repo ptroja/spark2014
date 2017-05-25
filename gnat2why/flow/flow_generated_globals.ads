@@ -265,6 +265,8 @@ private
    --  For colored debug output; ??? should be global for Flow
 
    XXX : constant Boolean := False;
+   --  Flag to enable debugging of the global generation in both phases
+   --  ??? RENAME THIS PLEASE
 
    Debug_Partial_Contracts : constant Boolean := True and XXX;
    --  Display contracts as they are built

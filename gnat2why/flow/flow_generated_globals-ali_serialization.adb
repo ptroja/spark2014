@@ -43,7 +43,7 @@ package body Flow_Generated_Globals.ALI_Serialization is
       Has_Terminate => Boolean'First,
       Nonreturning  => Boolean'First,
       Nonblocking   => Boolean'First,
-      others => <>);
+      others        => <>);
    --  Dummy value required only for the serialization API
 
    Null_ALI_Entry : constant array (ALI_Entry_Kind) of ALI_Entry :=
