@@ -560,7 +560,14 @@ package body Flow_Generated_Globals.Partial is
          Contr.Direct_Calls := FA.Direct_Calls;
       end if;
 
-      if Ekind (E) = E_Package then
+      --  Register abstract state components; if any then there should be
+      --  a Refined_State aspect.
+      --  ??? isn't this just checking if there are any abstract states?
+      if Ekind (E) = E_Package
+        and then Entity_Body_In_SPARK (E)
+        and then Present (Get_Pragma (FA.Analyzed_Entity,
+                          Pragma_Refined_State))
+      then
          GG_Register_State_Refinement (FA.Spec_Entity);
       end if;
 
